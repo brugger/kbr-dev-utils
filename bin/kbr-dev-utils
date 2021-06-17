@@ -29,12 +29,18 @@ version = version_utils.as_string('kbr')
 
 
 def version_command(args) -> None:
-    commands = ['bump', 'info', 'set', 'tag', 'unbumped', 'changed', 'file', 'init','help']
+#    commands = {'i': 'init', 'v': 'version', 'g': 'git', 'u': 'utils', 'h':'help'}
+
+#    commands = ['bump', 'info', 'set', 'tag', 'unbumped', 'changed', 'file', 'init','help']
+    commands = {'b':'bump', 'i':'info', 's':'set', 't':'tag', 'u':'unbumped', 'c':'changed', 'f':'file', 'in':'init','h':'help'}
     if len(args.command) == 0:
         args.command.append('help')
 
     command = args.command.pop(0)
-    args_utils.valid_command(command, commands)
+    if command in commands:
+        command = commands[ command ]
+
+    args_utils.valid_command(command, commands.values())
 
     if command == 'bump':
         args_utils.count(1, len(args.command), msg="version bump requires; major/minor/patch/dev")
@@ -69,17 +75,20 @@ def version_command(args) -> None:
         ts.replace(r'\.\d+', '')
         print(f"Version was last updated at {ts}")
     else:
-        print("version sub-commands: {}".format(", ".join(commands)))
+        print("version sub-commands: {}".format(", ".join(commands.values())))
         sys.exit()
 
 
 def git_command(args) -> None:
-    commands = ['bump', 'tag', 'unbumped', 'bumps', 'help']
+    commands = {'b':'bump', 't':'tag', 'u':'unbumped', 'bs':'bumps', 'h':'help'}
     if len(args.command) == 0:
         args.command.append('help')
 
     command = args.command.pop(0)
-    args_utils.valid_command(command, commands)
+    if command in commands:
+        command = commands[ command ]
+
+    args_utils.valid_command(command, commands.values())
 
     if command == 'bump':
         args_utils.count(1, len(args.command), msg="version bump requires; major/minor/patch/dev/rc")
@@ -98,18 +107,21 @@ def git_command(args) -> None:
         length = args_utils.get_or_default(args.command, 10)
         git_utils.bump_history(int(length))
     else:
-        print("git sub-commands: {}".format(", ".join(commands)))
+        print("git sub-commands: {}".format(", ".join(commands.values())))
         sys.exit()
 
 
 
 def release_command(args) -> None:
-    commands = ['info', 'prep', 'push', 'help']
+    commands = {'i':'info', 'pr': 'prep', 'pu': 'push', 'h':'help'}
     if len(args.command) == 0:
         args.command.append('help')
 
     command = args.command.pop(0)
-    args_utils.valid_command(command, commands)
+    if command in commands:
+        command = commands[ command ]
+
+    args_utils.valid_command(command, commands.values())
 
     if command == 'info':
         version = None
@@ -121,18 +133,22 @@ def release_command(args) -> None:
     elif command == 'push':
         version_utils.release_push()
     else:
-        print("version sub-commands: {}".format(", ".join(commands)))
+        print("version sub-commands: {}".format(", ".join(commands.values())))
         sys.exit()
 
 
 def init_cmds(args) -> None:
 
-    commands =['python', 'go', 'ansible-role', 'help']
+    commands ={'p':'python', 'g':'go', 'a':'ansible-role', 'h':'help'}
+
     if len(args.command) == 0:
         args.command.append('help')
 
     command = args.command.pop(0)
-    args_utils.valid_command(command, commands)
+    if command in commands:
+        command = commands[ command ]
+
+    args_utils.valid_command(command, commands.values())
 
     if command == 'python':
          version_utils.init_python_env()
@@ -143,17 +159,19 @@ def init_cmds(args) -> None:
         version_utils.write_version_json_file()
         os_utils.mkdirs(['defaults' 'handlers' 'meta' 'tasks' 'templates' 'vars'])
     else:
-        print("init sub-commands: {}".format(", ".join(commands)))
+        print("init sub-commands: {}".format(", ".join(commands.values())))
         sys.exit()
         
 
 def utils_cmds(args) -> None:
-    commands = ['uuid', 'uuids', 'passwd', 'passwds', 'help']
+    commands = {'u':'uuid', 'us':'uuids', 'p':'passwd', 'ps': 'passwds', 'h':'help'}
     if len(args.command) == 0:
         args.command.append('help')
 
     command = args.command.pop(0)
-    args_utils.valid_command(command, commands)
+    if command in commands:
+        command = commands[ command ]
+    args_utils.valid_command(command, commands.values())
 
     if command == 'uuid':
         length = 16
@@ -192,21 +210,21 @@ def utils_cmds(args) -> None:
         for _ in range(0, number):
             print(crypt_utils.create_password(length, use_special_chars))
     else:
-        print("utils sub-commands: {}".format(", ".join(commands)))
+        print("utils sub-commands: {}".format(", ".join(commands.values())))
         sys.exit()
 
 
 def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = ["init", "version", "git", "utils"]  # "release",
-    parser.add_argument('command', nargs='+', help="{}".format(",".join(commands)))
+    commands = {'i': 'init', 'v': 'version', 'g': 'git', 'u': 'utils', 'h':'help'}
+    parser.add_argument('command', nargs='+', help="{}".format(",".join(commands.values())))
 
     args = parser.parse_args()
     # hardcoded for now.
 
     command = args.command.pop(0)
-    if command not in commands:
-        parser.print_help()
+    if command in commands:
+        command = commands[ command ]
 
     if command == 'init':
         init_cmds( args )
@@ -219,9 +237,11 @@ def main():
     elif command == 'utils':
         utils_cmds(args)
     else:
-        print("Unknown command: {} are allowed.".format(string_utils.comma_sep(commands)))
-        sys.exit(1)
+        if command != 'help':
+            print(f"Unknown command: {command}.")
 
+        parser.print_help()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
