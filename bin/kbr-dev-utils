@@ -72,7 +72,7 @@ def version_command(args) -> None:
         ts.replace(r'\.\d+', '')
         print(f"Version was last updated at {ts}")
     else:
-        print("version sub-commands: {}".format(", ".join(commands.values())))
+        print("version sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
 
 
