@@ -34,7 +34,7 @@ def get_requirements():
     return data.split("\n")
 #    return "{}.{}.{}".format( data['major'], data['minor'], data['patch'])
 
-def scripts(directory='bin/*') -> []:
+def scripts(directory='bin/*') -> list:
     return glob.glob( directory )
 
 setup(name='kbr-dev-utils',
