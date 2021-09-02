@@ -119,7 +119,7 @@ def git_command(args) -> None:
         version_utils.remove_rc()
         version_str = version_utils.as_string()
         version_file = version_utils.find_version_file('version.json')
-        git_utils.commit_and_push(f"major_rc version bump to: {version_str}", version_file)
+        git_utils.commit_and_push(f"RC released version changed to: {version_str}", version_file)
     elif command == 'tag':
         version_utils.tag()
     elif command == 'unbumped':
