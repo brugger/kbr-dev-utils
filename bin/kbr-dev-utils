@@ -40,7 +40,7 @@ def version_command(args) -> None:
     command = args_utils.valid_command(command, commands)
 
     if command == 'bump':
-        args_utils.count(1, len(args.command), msg="version bump requires; major/minor/patch/dev")
+        args_utils.count(1, len(args.command), msg="version bump requires; major/minor/patch/dev/rc")
         bump = args.command.pop(0)
         args_utils.valid_command(bump, ['major', 'minor', 'patch', 'dev', 'rc'])
         version_utils.bump_version(bump)
