@@ -59,7 +59,7 @@ def version_command(args) -> None:
         version_file = args_utils.get_or_default(args.command, None)
         if os.path.exists(f"{version_file}/version.json"):
             version_file = f"{version_file}/version.json"
-        print(version_utils.as_string(version_file))
+        print(version_utils.as_string(version_file=version_file))
     elif command == 'init':
         if not os.path.isfile('version.json'):
             version_utils.write_version_json_file()
