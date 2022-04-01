@@ -12,18 +12,21 @@ import pprint
 
 pp = pprint.PrettyPrinter(indent=4)
 import argparse
+import tabulate
 
 sys.path.append(".")
 #sys.path.append("..")
 
 import kbr.args_utils as args_utils
 import kbr.version_utils as version_utils
-import kbr.string_utils as string_utils
+#import kbr.string_utils as string_utils
 import kbr.crypt_utils as crypt_utils
 import kbr.run_utils   as run_utils
 import kbr.datetime_utils as datetime_utils
 import kbr.os_utils as os_utils
 import kbr.git_utils as git_utils
+import kbr.config_utils as config_utils
+import kbr.dbase.postgres_utils as postgres_utils
 
 version = version_utils.as_string('kbr')
 
@@ -230,9 +233,108 @@ def utils_cmds(args) -> None:
         sys.exit()
 
 
+def postgres_cmds(args) -> None:
+    commands = {'uc':'user-create', 'ud':'user-delete', 'ul':'user-list',
+                'dc':'database-create', 'dd': 'database-delete', 
+                'tc':'tables-create', 'tl':'tables-list', 'td':'tables-delete', 
+                'tdt':'table-details',
+                'h':'help'}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
+
+    try:
+
+        config = config_utils.readin_config_file(config_file)
+    except Exception as e :
+#        print (e)
+        print("Error:")
+        print(f"{config_file}, does not exit\n")        
+        print("Howto create:\nsudo -u postgres psql")
+        print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
+        print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
+        sys.exit()
+
+    postgres_utils.connect(config['admin_dbase']+"postgres")
+
+
+
+    if command == 'user-create':
+        username = args_utils.get_or_fail(args.command, "Missing username")
+        password = args_utils.get_or_fail(args.command, "Missing password")
+
+        if postgres_utils.user_get(username) is not None:
+            print(f"{username} already exists")
+        else:
+            postgres_utils.user_create(username, password)
+
+    elif command == 'user-delete':
+        username = args_utils.get_or_fail(args.command, "Missing username")
+        if postgres_utils.user_get(username) is None:
+            print(f"{username} don't exists")
+        else:
+            postgres_utils.user_delete(username)
+
+    elif command == 'user-list':
+
+            users = postgres_utils.user_list()
+            print(tabulate.tabulate(users, headers={'rolname':'name', 'rolsuper':'admin'}))
+
+
+    elif command == 'database-create':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        username = args_utils.get_or_default(args.command, None)
+        if postgres_utils.database_exists(dbname):
+            print(f"{dbname} already exists")
+        else:
+            postgres_utils.database_create(dbname, username)
+
+    elif command == 'database-delete':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        if postgres_utils.database_exists(dbname):
+            postgres_utils.database_delete(dbname)
+        else:
+            print( f"{dbname} does not exist" )
+
+    elif command == 'tables-create':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        schema = args_utils.get_or_fail(args.command, "Missing file with sql-schema")
+        postgres_utils.connect(config['admin_dbase']+dbname)
+        postgres_utils.tables_create(schema)
+
+    elif command == 'tables-list':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        postgres_utils.connect(config['admin_dbase']+dbname)
+        print( "\n".join(postgres_utils.tables_list() ))
+
+    elif command == 'tables-delete':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        postgres_utils.connect(config['admin_dbase']+dbname)
+        postgres_utils.tables_delete(dbname)
+
+    elif command == 'table-details':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        tbname = args_utils.get_or_fail(args.command, "Missing table name")
+        postgres_utils.connect(config['admin_dbase']+dbname)
+        tbl = postgres_utils.table_details(tbname)
+        print(f"Table: {dbname}.{tbname}")
+        print(tabulate.tabulate(tbl, headers={'column_name':'name', 'data_type':'type'}))
+
+
+    else:
+        print("postgres : {}".format(args_utils.pretty_commands(commands)))
+        sys.exit()
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'i': 'init', 'v': 'version', 'g': 'git', 'u': 'utils', 'h':'help'}
+    commands = {'i': 'init', 'v': 'version', 'g': 'git', 'u': 'utils', 'pg': 'postgres', 'h':'help'}
     parser.add_argument('command', nargs='+', help="{}".format(",".join(commands.values())))
 
     args = parser.parse_args()
@@ -252,6 +354,8 @@ def main():
     #        release_command(args)
     elif command == 'utils':
         utils_cmds(args)
+    elif command == 'postgres':
+        postgres_cmds(args)
     else:
         if command != 'help':
             print(f"Unknown command: {command}.")
