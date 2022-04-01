@@ -134,7 +134,7 @@ def git_command(args) -> None:
         length = args_utils.get_or_default(args.command, 10)
         git_utils.bump_history(int(length))
     else:
-        print("git sub-commands: {}".format(", ".join(commands.values())))
+        print("git sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
 
 
@@ -180,7 +180,7 @@ def init_cmds(args) -> None:
         version_utils.write_version_json_file()
         os_utils.mkdirs(['defaults' 'handlers' 'meta' 'tasks' 'templates' 'vars'])
     else:
-        print("init sub-commands: {}".format(", ".join(commands.values())))
+        print("init sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
         
 
@@ -229,13 +229,13 @@ def utils_cmds(args) -> None:
         for _ in range(0, number):
             print(crypt_utils.create_password(length, use_special_chars))
     else:
-        print("utils sub-commands: {}".format(", ".join(commands.values())))
+        print("utils sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
 
 
 def postgres_cmds(args) -> None:
     commands = {'uc':'user-create', 'ud':'user-delete', 'ul':'user-list',
-                'dc':'database-create', 'dd': 'database-delete', 
+                'dc':'database-create', 'dd': 'database-delete', 'dl': 'database-list',
                 'tc':'tables-create', 'tl':'tables-list', 'td':'tables-delete', 
                 'tdt':'table-details',
                 'h':'help'}
@@ -301,6 +301,12 @@ def postgres_cmds(args) -> None:
         else:
             print( f"{dbname} does not exist" )
 
+    elif command == 'database-list':
+
+            dbs = postgres_utils.database_list()
+            print(tabulate.tabulate(dbs, headers={'datname':'database name'}))
+
+
     elif command == 'tables-create':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         schema = args_utils.get_or_fail(args.command, "Missing file with sql-schema")
@@ -360,7 +366,9 @@ def main():
         if command != 'help':
             print(f"Unknown command: {command}.")
 
+
         parser.print_help()
+        print("\ncommands : {}".format(args_utils.pretty_commands(commands)))
         sys.exit(1)
 
 if __name__ == "__main__":
