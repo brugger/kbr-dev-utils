@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+
+
+import argparse
+import sys
+import os
+
+from kbr import config_utils
+import tabulate
+from urllib.parse import urlparse
+
+import kbr.args_utils as args_utils
+import kbr.version_utils as version_utils
+import kbr.dbase.postgres_utils as postgres_utils
+
+version = version_utils.as_string('kbr')
+
+db = None
+
+
+def api_skeleton(args) -> None:
+    commands = {'uc':'user-create', 'ud':'user-delete', 'ul':'user-list',
+                'dc':'database-create', 'dd': 'database-delete', 'dl': 'database-list',
+                'tc':'tables-create', 'tl':'tables-list', 'td':'tables-delete', 
+                'tdt':'table-details',
+                'h':'help'}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+#    command = args.command.pop(0)
+#    command = args_utils.valid_command(command, commands)
+
+    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
+
+    try:
+
+        config = config_utils.readin_config_file(config_file)
+    except Exception as e :
+#        print (e)
+        print("Error:")
+        print(f"{config_file}, does not exit\n")        
+        print("Howto create:\nsudo -u postgres psql")
+        print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
+        print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
+        sys.exit()
+
+    dbname = args_utils.get_or_fail(args.command, "Missing database name")
+
+    postgres_utils.connect(config['admin_dbase']+dbname)
+    print(header())
+
+    while len(args.command):
+
+        tbname = args_utils.get_or_default(args.command, "Missing table name")
+
+
+        tbl = postgres_utils.table_details(tbname)
+        print(list_entries(tbname))
+
+def list_entries(tblname:str) -> str:
+    return f"""
+    def {tblname}s(self, **values) -> dict:
+        return self._db.get('{tblname}', **values)\n"""
+
+
+
+def print_create(tbl:dict) -> str:
+        return self._db.get('project', **values)
+
+
+
+
+
+def header() -> str:
+    return """
+import kbr.db_utils as db
+
+class DB(object):
+
+    def connect(self, url: str) -> None:
+        self._db = db.DB(url)
+
+    def disconnect(self) -> None:
+
+        if self._db is not None:
+            self._db.close()
+"""
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
+    commands = {'a': 'api', 'h':'help'}
+    parser.add_argument('command', nargs='+', help="{}".format(",".join(commands.values())))
+
+    args = parser.parse_args()
+    # hardcoded for now.
+
+    command = args.command.pop(0)
+    if command in commands:
+        command = commands[ command ]
+
+    if command == 'api':
+        api_skeleton( args )
+    else:
+        if command != 'help':
+            print(f"Unknown command: {command}.")
+
+
+        parser.print_help()
+        print("\ncommands : {}".format(args_utils.pretty_commands(commands)))
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
