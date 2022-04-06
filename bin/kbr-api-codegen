@@ -68,25 +68,9 @@ def create_entry(tblname:str, tbl:dict=None) -> str:
             if required_key is not None:
                 required_key = row['column_name']
 
-    unique_copy = f"""
-        v = self._db.get_single('{tblname}', **values)
-        if v is not None:
-            return v
-
-#        print('adding entry to {tblname}')
-        p = self._db.add('{tblname}', **values)
-
-#        print( "getting entry from {tblname}...")
-        return self._db.get('variant', **values)\n"""
-
-    if len(required) == 2:
-        unique_copy = f"""
-        return self._db.add_unique('{tblname}', **values, '{required_key}')\n"""
-
-
     return f"""
     def {tblname}_create(self{", ".join(required)}, **values) -> dict:
-        p = self._db.add('{tblname}', **values)
+        p = self._db.add('{tblname}', values)
 
         return self._db.get('{tblname}', **values)\n"""
 
@@ -139,7 +123,7 @@ def delete_entry(tblname:str) -> str:
         self._db.delete('{tblname}', id=id)\n"""
 
 
-def header() -> str:
+def module_header() -> str:
     return """
 import kbr.db_utils as db
 
@@ -154,45 +138,118 @@ class DB(object):
             self._db.close()
 """
 
+def print_table_api(tbname:str, tbl:list) -> None:
+    print( f"##### {tbname} #####")
+    print(create_entry(tbname, tbl))
+    print(create_entry_unique(tbname, tbl))
+    print(list_entries(tbname))
+    print(update_entry(tbname))
+    print(delete_entry(tbname))    
 
-def print_facade() -> None:
-    print("""
-import db as db
 
-class Facade(db.DB):
+
+def print_cli_api(tbname:str, tbl:list) -> None:
+
+    print(tbl)
+
+    mandatory = []
+    optional  = []
+
+    mandatory_args = ""
+    optional_args  = ""
+    params = []
+    dicts = ["'id':id"]
+    for row in tbl:
+        name = row['column_name']
+        if name == 'id':
+            continue
+        params.append(f"{name}={name}")
+        dicts.append(f"'{name}': {name}")
+        if row['is_nullable'] == 'NO':
+            mandatory.append( name)
+            mandatory_args += f'        {name} = args_utils.get_or_fail(args, "Missing {name}")\n'
+        else:
+            optional_args += f'        {name} = args_utils.get_or_default(args, None)\n'
+            optional.append( name)
+
+    print(f"""
+def {tbname}_cmd(args) -> None:
+
+    commands = {{'c':'create', 'l':'list', 'u':'update', 'd': 'delete', 'h':'help'}}
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+""")
+
+    print(f"""
+    if command == 'create':
+{mandatory_args}{optional_args}
+        db.{tbname}_create({", ".join(params)})""")
+
+    print(f"""
+    elif command == 'list':
+        {tbname}s = db.{tbname}s()
+        print( tabulate({tbname}s, headers=True, tablefmt='psql'))""")
+
+    print(f"""
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing {tbname} id")
+{mandatory_args}
+{optional_args}
+        name = args_utils.get_or_default(args, None)
+        comment = args_utils.get_or_default(args, None)
+        if name is None and comment is None:
+            print("Neither updated name or comment given: {tbname} update <NAME> <COMMENT>")
+            sys.exit()
+        else:
+            db.{tbname}_update({{{", ".join(dicts)}}})""")
+
+    print(f"""
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing {tbname} id")
+        db.{tbname}_delete(id)""")
+
+    if len(mandatory):
+        mandatory = f"[{'] ['.join(mandatory)}] "
+    else:
+        mandatory = ""
+    
+    if len(optional):
+        optional = f"<{'> <'.join(optional)}>"
+    else:
+        optional = ""
+
+    print(f"""
+    else:
+        print("Help:")
+        print("-----------------")
+        print("{tbname} list")
+        print("{tbname} create {mandatory}{optional})")
+        print("{tbname} update [id] {mandatory} {optional})")
+        print("{tbname} delete [id]")
+        sys.exit()""")
+
+
+
+
+def print_facade(project:str) -> None:
+    print(f"""
+import {project}.db as db
+
+class DB(db.DB):
+
     def new_function() -> None:
-        print("Add facade stuff here...")
+        print("Add fancy facade stuff here...")
         return\n""")
 
 
-
-def main():
-    parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    parser.add_argument('-F', '--facade', default=False, help="output facade of api-file", action="store_true")
-
-    parser.add_argument('-H', '--header', default=False, help="output header of api-file", action="store_true")
-    parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
-    parser.add_argument('command', nargs='+', help="List of tables to make api code for")
-
-    args = parser.parse_args()
-    # hardcoded for now.
-
-    if args.facade:
-        print_facade()        
-        sys.exit()
-
-
-    if args.header:
-        print(header())
-
-
-
-
-    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
-
+def read_config(config_file) -> dict:
     try:
 
         config = config_utils.readin_config_file(config_file)
+        return config
     except Exception as e :
 #        print (e)
         print("Error:")
@@ -202,26 +259,57 @@ def main():
         print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
         sys.exit()
 
-    dbname = args_utils.get_or_fail(args.command, "Missing database name")
 
-    postgres_utils.connect(config['admin_dbase']+dbname)
+def main():
+    parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
+    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'h':'help'}
+    parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
 
-    if args.all_tables:
-        args.command +=  postgres_utils.tables_list()
+    parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
+    parser.add_argument('command', nargs='+', help="List of tables to make api code for")
 
-    while len(args.command):
+    args = parser.parse_args()
 
-        tbname = args_utils.get_or_default(args.command, "Missing table name")
-        print( f"##### {tbname} #####")
+    config = read_config(args.config_file[0])
 
-        tbl = postgres_utils.table_details(tbname)
-#        foreign_keys = postgres_utils.table_foreign_keys(tbname)
-        print(create_entry(tbname, tbl))
-        print(create_entry_unique(tbname, tbl))
-        print(list_entries(tbname))
-        print(update_entry(tbname))
-        print(delete_entry(tbname))
+    command = args.command.pop(0)
+    if command in commands:
+        command = commands[ command ]
 
+    if command == 'facade':
+        pname = args_utils.get_or_fail(args.command, "project name is missing")
+        print_facade( pname )
+    elif command == 'api':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        if 'header' in args.command:
+            header = args.command.pop(args.command.index('header'))
+            print(module_header())
+
+        postgres_utils.connect(config['admin_dbase']+dbname)
+
+        if args.all_tables:
+            args.command +=  postgres_utils.tables_list()
+
+        while len(args.command):
+
+            tbname = args_utils.get_or_default(args.command, "Missing table name")
+            tbl = postgres_utils.table_details(tbname)
+            print_table_api(tbname, tbl)
+
+
+    elif command == 'cli':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+
+        postgres_utils.connect(config['admin_dbase']+dbname)
+
+        if args.all_tables:
+            args.command +=  postgres_utils.tables_list()
+
+        while len(args.command):
+
+            tbname = args_utils.get_or_default(args.command, "Missing table name")
+            tbl = postgres_utils.table_details(tbname)
+            print_cli_api(tbname, tbl)
 
 
 if __name__ == "__main__":
