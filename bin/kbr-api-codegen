@@ -150,8 +150,6 @@ def print_table_api(tbname:str, tbl:list) -> None:
 
 def print_cli_api(tbname:str, tbl:list) -> None:
 
-    print(tbl)
-
     mandatory = []
     optional  = []
 
@@ -191,20 +189,18 @@ def {tbname}_cmd(args) -> None:
     print(f"""
     elif command == 'list':
         {tbname}s = db.{tbname}s()
-        print( tabulate({tbname}s, headers=True, tablefmt='psql'))""")
+        print( tabulate({tbname}s, headers={{}}, tablefmt='psql'))""")
 
     print(f"""
     elif command == 'update':
         id = args_utils.get_or_fail(args, "Missing {tbname} id")
-{mandatory_args}
-{optional_args}
-        name = args_utils.get_or_default(args, None)
-        comment = args_utils.get_or_default(args, None)
-        if name is None and comment is None:
-            print("Neither updated name or comment given: {tbname} update <NAME> <COMMENT>")
-            sys.exit()
-        else:
-            db.{tbname}_update({{{", ".join(dicts)}}})""")
+{mandatory_args}{optional_args}""")
+    print("        data = {'id':id}")
+    for v in mandatory+optional:
+        print(f"        if {v} is not None:")
+        print(f"            data['{v}'] = {v}")
+    print(f"""\n        db.{tbname}_update(data)""")
+#    print(f"""        db.{tbname}_update({{{", ".join(dicts)}}})""")
 
     print(f"""
     elif command == 'delete':
@@ -226,8 +222,8 @@ def {tbname}_cmd(args) -> None:
         print("Help:")
         print("-----------------")
         print("{tbname} list")
-        print("{tbname} create {mandatory}{optional})")
-        print("{tbname} update [id] {mandatory} {optional})")
+        print("{tbname} create {mandatory}{optional}")
+        print("{tbname} update [id] {mandatory}{optional}")
         print("{tbname} delete [id]")
         sys.exit()""")
 
