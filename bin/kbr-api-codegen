@@ -4,6 +4,7 @@
 import argparse
 import sys
 import os
+from unittest import case
 
 from kbr import config_utils
 import tabulate
@@ -31,45 +32,111 @@ def api_skeleton(args) -> None:
 #    command = args.command.pop(0)
 #    command = args_utils.valid_command(command, commands)
 
-    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
-
-    try:
-
-        config = config_utils.readin_config_file(config_file)
-    except Exception as e :
-#        print (e)
-        print("Error:")
-        print(f"{config_file}, does not exit\n")        
-        print("Howto create:\nsudo -u postgres psql")
-        print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
-        print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
-        sys.exit()
-
-    dbname = args_utils.get_or_fail(args.command, "Missing database name")
-
-    postgres_utils.connect(config['admin_dbase']+dbname)
-    print(header())
-
-    while len(args.command):
-
-        tbname = args_utils.get_or_default(args.command, "Missing table name")
-
-
-        tbl = postgres_utils.table_details(tbname)
-        print(list_entries(tbname))
-
+ 
 def list_entries(tblname:str) -> str:
     return f"""
     def {tblname}s(self, **values) -> dict:
         return self._db.get('{tblname}', **values)\n"""
 
 
+def to_python_type(dtype:str) -> str:
+    if dtype == 'integer':
+        return "int"
+    elif dtype == 'boolean':
+        return "bool"
+    elif dtype == 'uuid':
+        return "str"
+    elif "character" in dtype:
+        return "str"
+    else:
+        return "any"
 
-def print_create(tbl:dict) -> str:
-        return self._db.get('project', **values)
+
+
+def create_entry(tblname:str, tbl:dict=None) -> str:
+#    import pprint as pp
+#    pp.pprint(tbl)
+#    pp.pprint(foreign_keys)
+
+    required = [""]
+    required_values = ""
+    required_key = None
+    for row in tbl:
+        if row['is_nullable'] == 'NO' and row['column_name'] != 'id':
+            required.append( f"{row['column_name']}:{to_python_type(row['data_type'])}")
+            required_values += f"        values['{row['column_name']}'] = {row['column_name']}\n"
+            if required_key is not None:
+                required_key = row['column_name']
+
+    unique_copy = f"""
+        v = self._db.get_single('{tblname}', **values)
+        if v is not None:
+            return v
+
+#        print('adding entry to {tblname}')
+        p = self._db.add('{tblname}', **values)
+
+#        print( "getting entry from {tblname}...")
+        return self._db.get('variant', **values)\n"""
+
+    if len(required) == 2:
+        unique_copy = f"""
+        return self._db.add_unique('{tblname}', **values, '{required_key}')\n"""
+
+
+    return f"""
+    def {tblname}_create(self{", ".join(required)}, **values) -> dict:
+        p = self._db.add('{tblname}', **values)
+
+        return self._db.get('{tblname}', **values)\n"""
+
+
+def create_entry_unique(tblname:str, tbl:dict=None) -> str:
+#    import pprint as pp
+#    pp.pprint(tbl)
+#    pp.pprint(foreign_keys)
+
+    required = [""]
+    required_values = ""
+    required_key = None
+    for row in tbl:
+        if row['is_nullable'] == 'NO' and row['column_name'] != 'id':
+            required.append( f"{row['column_name']}:{to_python_type(row['data_type'])}")
+            required_values += f"        values['{row['column_name']}'] = {row['column_name']}\n"
+            if required_key is not None:
+                required_key = row['column_name']
+
+    unique_copy = f"""
+        v = self._db.get_single('{tblname}', **values)
+        if v is not None:
+            return v
+
+        p = self._db.add('{tblname}', **values)
+
+        return self._db.get('{tblname}', **values)\n"""
+
+    if len(required) == 2:
+        unique_copy = f"""
+        return self._db.add_unique('{tblname}', **values, '{required_key}')\n"""
+
+
+    return f"""
+    def {tblname}_create_unique(self{", ".join(required)}, **values) -> dict:
+{required_values}
+{unique_copy}"""
 
 
 
+def update_entry(tblname:str) -> str:
+    return f"""
+    def {tblname}_update(self, values: dict) -> dict:
+        self._db.update('{tblname}', values, {{'id': values['id']}})\n"""
+
+
+def delete_entry(tblname:str) -> str:
+    return f"""    
+    def {tblname}_delete(self, id) -> dict:
+        self._db.delete('{tblname}', id=id)\n"""
 
 
 def header() -> str:
@@ -88,29 +155,74 @@ class DB(object):
 """
 
 
+def print_facade() -> None:
+    print("""
+import db as db
+
+class Facade(db.DB):
+    def new_function() -> None:
+        print("Add facade stuff here...")
+        return\n""")
+
+
 
 def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'a': 'api', 'h':'help'}
-    parser.add_argument('command', nargs='+', help="{}".format(",".join(commands.values())))
+    parser.add_argument('-F', '--facade', default=False, help="output facade of api-file", action="store_true")
+
+    parser.add_argument('-H', '--header', default=False, help="output header of api-file", action="store_true")
+    parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
+    parser.add_argument('command', nargs='+', help="List of tables to make api code for")
 
     args = parser.parse_args()
     # hardcoded for now.
 
-    command = args.command.pop(0)
-    if command in commands:
-        command = commands[ command ]
-
-    if command == 'api':
-        api_skeleton( args )
-    else:
-        if command != 'help':
-            print(f"Unknown command: {command}.")
+    if args.facade:
+        print_facade()        
+        sys.exit()
 
 
-        parser.print_help()
-        print("\ncommands : {}".format(args_utils.pretty_commands(commands)))
-        sys.exit(1)
+    if args.header:
+        print(header())
+
+
+
+
+    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
+
+    try:
+
+        config = config_utils.readin_config_file(config_file)
+    except Exception as e :
+#        print (e)
+        print("Error:")
+        print(f"{config_file}, does not exit\n")        
+        print("Howto create:\nsudo -u postgres psql")
+        print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
+        print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
+        sys.exit()
+
+    dbname = args_utils.get_or_fail(args.command, "Missing database name")
+
+    postgres_utils.connect(config['admin_dbase']+dbname)
+
+    if args.all_tables:
+        args.command +=  postgres_utils.tables_list()
+
+    while len(args.command):
+
+        tbname = args_utils.get_or_default(args.command, "Missing table name")
+        print( f"##### {tbname} #####")
+
+        tbl = postgres_utils.table_details(tbname)
+#        foreign_keys = postgres_utils.table_foreign_keys(tbname)
+        print(create_entry(tbname, tbl))
+        print(create_entry_unique(tbname, tbl))
+        print(list_entries(tbname))
+        print(update_entry(tbname))
+        print(delete_entry(tbname))
+
+
 
 if __name__ == "__main__":
     main()
