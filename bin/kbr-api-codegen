@@ -6,8 +6,6 @@ import sys
 import os
 from unittest import case
 
-print( sys.path )
-
 from kbr import config_utils
 from urllib.parse import urlparse
 
@@ -247,7 +245,6 @@ def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
     commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
-
     parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
     parser.add_argument('command', nargs='+', help="List of tables to make api code for")
 
@@ -259,40 +256,29 @@ def main():
     if command in commands:
         command = commands[ command ]
 
+    if args.all_tables:
+        args.command +=  postgres_utils.tables_list()
+
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
         print_facade( pname )
-    elif command == 'api':
+    elif command in ['api', 'cli']:
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        if 'header' in args.command:
-            header = args.command.pop(args.command.index('header'))
+        if command == 'api' and 'header' in args.command:
+            args.command.pop(args.command.index('header'))
             print(module_header())
 
         postgres_utils.connect(config['admin_dbase']+dbname)
 
-        if args.all_tables:
-            args.command +=  postgres_utils.tables_list()
-
         while len(args.command):
 
             tbname = args_utils.get_or_default(args.command, "Missing table name")
             tbl = postgres_utils.table_details(tbname)
-            print_table_api(tbname, tbl)
+            if command == 'api':
+                print_table_api(tbname, tbl)
+            elif command == 'cli':
+                print_cli_api(tbname, tbl)
 
-
-    elif command == 'cli':
-        dbname = args_utils.get_or_fail(args.command, "Missing database name")
-
-        postgres_utils.connect(config['admin_dbase']+dbname)
-
-        if args.all_tables:
-            args.command +=  postgres_utils.tables_list()
-
-        while len(args.command):
-
-            tbname = args_utils.get_or_default(args.command, "Missing table name")
-            tbl = postgres_utils.table_details(tbname)
-            print_cli_api(tbname, tbl)
 
 
 if __name__ == "__main__":
