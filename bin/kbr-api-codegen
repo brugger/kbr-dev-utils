@@ -6,8 +6,9 @@ import sys
 import os
 from unittest import case
 
+print( sys.path )
+
 from kbr import config_utils
-import tabulate
 from urllib.parse import urlparse
 
 import kbr.args_utils as args_utils
@@ -17,20 +18,6 @@ import kbr.dbase.postgres_utils as postgres_utils
 version = version_utils.as_string('kbr')
 
 db = None
-
-
-def api_skeleton(args) -> None:
-    commands = {'uc':'user-create', 'ud':'user-delete', 'ul':'user-list',
-                'dc':'database-create', 'dd': 'database-delete', 'dl': 'database-list',
-                'tc':'tables-create', 'tl':'tables-list', 'td':'tables-delete', 
-                'tdt':'table-details',
-                'h':'help'}
-
-    if len(args.command) == 0:
-        args.command.append('help')
-
-#    command = args.command.pop(0)
-#    command = args_utils.valid_command(command, commands)
 
  
 def list_entries(tblname:str) -> str:
