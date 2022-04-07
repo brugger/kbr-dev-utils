@@ -61,9 +61,6 @@ def create_entry(tblname:str, tbl:dict=None) -> str:
 
 
 def create_entry_unique(tblname:str, tbl:dict=None) -> str:
-#    import pprint as pp
-#    pp.pprint(tbl)
-#    pp.pprint(foreign_keys)
 
     required = [""]
     required_values = ""
@@ -141,13 +138,11 @@ def print_cli_api(tbname:str, tbl:list) -> None:
     mandatory_args = ""
     optional_args  = ""
     params = []
-    dicts = ["'id':id"]
     for row in tbl:
         name = row['column_name']
         if name == 'id':
             continue
         params.append(f"{name}={name}")
-        dicts.append(f"'{name}': {name}")
         if row['is_nullable'] == 'NO':
             mandatory.append( name)
             mandatory_args += f'        {name} = args_utils.get_or_fail(args, "Missing {name}")\n'
@@ -185,7 +180,6 @@ def {tbname}_cmd(args) -> None:
         print(f"        if {v} is not None:")
         print(f"            data['{v}'] = {v}")
     print(f"""\n        db.{tbname}_update(data)""")
-#    print(f"""        db.{tbname}_update({{{", ".join(dicts)}}})""")
 
     print(f"""
     elif command == 'delete':
@@ -223,7 +217,8 @@ class DB(db.DB):
 
     def new_function() -> None:
         print("Add fancy facade stuff here...")
-        return\n""")
+        return
+""")
 
 
 def read_config(config_file) -> dict:
