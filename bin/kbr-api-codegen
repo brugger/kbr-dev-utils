@@ -251,8 +251,6 @@ def main():
     if command in commands:
         command = commands[ command ]
 
-    if args.all_tables:
-        args.command +=  postgres_utils.tables_list()
 
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
@@ -264,6 +262,10 @@ def main():
             print(module_header())
 
         postgres_utils.connect(config['admin_dbase']+dbname)
+
+        if args.all_tables:
+            args.command +=  postgres_utils.tables_list()
+
 
         while len(args.command):
 
