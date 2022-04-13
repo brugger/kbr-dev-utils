@@ -321,7 +321,7 @@ def postgres_cmds(args) -> None:
     elif command == 'tables-delete':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         postgres_utils.connect(config['admin_dbase']+dbname)
-        postgres_utils.tables_delete(dbname)
+        postgres_utils.tables_delete()
 
     elif command == 'table-details':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
