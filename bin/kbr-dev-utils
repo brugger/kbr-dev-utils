@@ -262,7 +262,7 @@ def postgres_cmds(args) -> None:
         postgres_user_cmds(args)
     elif command == 'database':
         postgres_database_cmds(args)
-    elif command == 'tables':
+    elif command == 'table':
         postgres_table_cmds(args)
     else:
         print("postgres : {}".format(args_utils.pretty_commands(commands)))
@@ -272,7 +272,7 @@ def postgres_cmds(args) -> None:
 
 
 def postgres_user_cmds(args) -> None:
-    commands = {'c':'create', 'u':'delete', 'l':'list', 'h':'help'}
+    commands = {'c':'create', 'd':'delete', 'l':'list', 'h':'help'}
 
     if len(args.command) == 0:
         args.command.append('help')
@@ -281,6 +281,7 @@ def postgres_user_cmds(args) -> None:
     command = args_utils.valid_command(command, commands)
 
     config = read_json_config()
+    db = postgres_utils.DB(config['admin_dbase']+"postgres")
 
     if command == 'create':
         username = args_utils.get_or_fail(args.command, "Missing username")
@@ -303,17 +304,13 @@ def postgres_user_cmds(args) -> None:
             print(tabulate.tabulate(users, headers={'rolname':'name', 'rolsuper':'admin'}))
 
     else:
-        print("postgres : {}".format(args_utils.pretty_commands(commands)))
+        print("postgres user: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
 
 
 
-def postgres_cmds_old(args) -> None:
-    commands = {'c':'create', 'u':'delete', 'l':'list',
-                'dc':'database-create', 'dd': 'database-delete', 'dl': 'database-list',
-                'tc':'tables-create', 'tl':'tables-list', 'td':'tables-delete', 
-                'tdt':'table-details',
-                'h':'help'}
+def postgres_database_cmds(args) -> None:
+    commands = {'c':'create', 'd':'delete', 'l':'list', 'o':'set-owner','h':'help'}
 
     if len(args.command) == 0:
         args.command.append('help')
@@ -321,24 +318,9 @@ def postgres_cmds_old(args) -> None:
     command = args.command.pop(0)
     command = args_utils.valid_command(command, commands)
 
-    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
-
-    try:
-
-        config = config_utils.readin_config_file(config_file)
-    except Exception as e :
-#        print (e)
-        print("Error:")
-        print(f"{config_file}, does not exit\n")        
-        print("Howto create:\nsudo -u postgres psql")
-        print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
-        print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
-        sys.exit()
-
+    config = read_json_config()
     db = postgres_utils.DB(config['admin_dbase']+"postgres")
-
-
-    if command == 'database-create':
+    if command == 'create':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         username = args_utils.get_or_default(args.command, None)
         if db.database_exists(dbname):
@@ -346,47 +328,74 @@ def postgres_cmds_old(args) -> None:
         else:
             db.database_create(dbname, username)
 
-    elif command == 'database-delete':
+    elif command == 'delete':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         if db.database_exists(dbname):
             db.database_delete(dbname)
         else:
             print( f"{dbname} does not exist" )
 
-    elif command == 'database-list':
-
+    elif command == 'list':
             dbs = db.database_list()
             print(tabulate.tabulate(dbs, headers={'datname':'database name'}))
 
-
-    elif command == 'tables-create':
-        dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        schema = args_utils.get_or_fail(args.command, "Missing file with sql-schema")
-        db = postgres_utils.DB(config['admin_dbase']+dbname)
-        db.tables_create(schema)
-
-    elif command == 'tables-list':
-        dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        db = postgres_utils.DB(config['admin_dbase']+dbname)
-        print( "\n".join(db.tables_list() ))
-
-    elif command == 'tables-delete':
-        dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        db = postgres_utils.DB(config['admin_dbase']+dbname)
-        db.tables_delete()
-
-    elif command == 'table-details':
-        dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        tbname = args_utils.get_or_fail(args.command, "Missing table name")
-        db = postgres_utils.DB(config['admin_dbase']+dbname)
-        tbl = db.table_details(tbname)
-        print(f"Table: {dbname}.{tbname}")
-        print(tabulate.tabulate(tbl, headers={'column_name':'name', 'data_type':'type'}))
-
+    elif command == 'set-owner':
+            dbname = args_utils.get_or_fail(args.command, "Missing database name")
+            new_owner = args_utils.get_or_fail(args.command, "Missing user name")
+            db.database_change_owner(dbname, new_owner)
 
     else:
-        print("postgres : {}".format(args_utils.pretty_commands(commands)))
+        print("postgres user: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
+
+
+def postgres_table_cmds(args) -> None:
+    commands = {'c':'create', 'd':'delete', 'l':'list', 's':'schema', 'o':'set-owner', 'h':'help'}
+
+    if len(args.command) == 0 or 'help' in args:
+        print("postgres table: {}".format(args_utils.pretty_commands(commands)))
+        print("Help")
+        print("------")
+        print("table create [database] [schema-file] <owner>")
+        print("table delete [database] (all tables!)")
+        print("table set-owner [database] [old-owner] [new-owner]")
+        print("table schema [database] [table-name]")
+        sys.exit()
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    dbname = args_utils.get_or_fail(args.command, "Missing database name")
+    config = read_json_config()
+    db = postgres_utils.DB(config['admin_dbase']+dbname)
+
+    if command == 'create':
+        schema = args_utils.get_or_fail(args.command, "Missing file with sql-schema")
+        owner  = args_utils.get_or_default(args.command, None)
+        db.tables_create(schema)
+
+        if owner is not None:
+            uri_detail = db.uri_split()
+            db.tables_change_owner(uri_detail['user'], owner)
+
+    elif command == 'list':
+        tables = db.tables_list()
+        print(tabulate.tabulate(tables, headers={}))
+
+    elif command == 'delete':
+        db.tables_delete()
+
+    elif command == 'set-owner':
+            old_owner = args_utils.get_or_fail(args.command, "Missing old-owner name")
+            new_owner = args_utils.get_or_fail(args.command, "Missing new-owner name")
+            db.tables_change_owner(old_owner, new_owner)
+
+    elif command == 'schema':
+        tblname = args_utils.get_or_fail(args.command, "Missing table name")
+        tbl = db.table_details(tblname)
+        print(f"Table: {dbname}.{tblname}")
+        print(tabulate.tabulate(tbl, headers={'column_name':'name', 'data_type':'type'}))
+
 
 
 
