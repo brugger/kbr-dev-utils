@@ -260,74 +260,73 @@ def postgres_cmds(args) -> None:
         print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
         sys.exit()
 
-    postgres_utils.connect(config['admin_dbase']+"postgres")
-
+    db = postgres_utils.DB(config['admin_dbase']+"postgres")
 
 
     if command == 'user-create':
         username = args_utils.get_or_fail(args.command, "Missing username")
         password = args_utils.get_or_fail(args.command, "Missing password")
 
-        if postgres_utils.user_get(username) is not None:
+        if db.user_get(username) is not None:
             print(f"{username} already exists")
         else:
-            postgres_utils.user_create(username, password)
+            db.user_create(username, password)
 
     elif command == 'user-delete':
         username = args_utils.get_or_fail(args.command, "Missing username")
-        if postgres_utils.user_get(username) is None:
+        if db.user_get(username) is None:
             print(f"{username} don't exists")
         else:
-            postgres_utils.user_delete(username)
+            db.user_delete(username)
 
     elif command == 'user-list':
 
-            users = postgres_utils.user_list()
+            users = db.user_list()
             print(tabulate.tabulate(users, headers={'rolname':'name', 'rolsuper':'admin'}))
 
 
     elif command == 'database-create':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         username = args_utils.get_or_default(args.command, None)
-        if postgres_utils.database_exists(dbname):
+        if db.database_exists(dbname):
             print(f"{dbname} already exists")
         else:
-            postgres_utils.database_create(dbname, username)
+            db.database_create(dbname, username)
 
     elif command == 'database-delete':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        if postgres_utils.database_exists(dbname):
-            postgres_utils.database_delete(dbname)
+        if db.database_exists(dbname):
+            db.database_delete(dbname)
         else:
             print( f"{dbname} does not exist" )
 
     elif command == 'database-list':
 
-            dbs = postgres_utils.database_list()
+            dbs = db.database_list()
             print(tabulate.tabulate(dbs, headers={'datname':'database name'}))
 
 
     elif command == 'tables-create':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         schema = args_utils.get_or_fail(args.command, "Missing file with sql-schema")
-        postgres_utils.connect(config['admin_dbase']+dbname)
-        postgres_utils.tables_create(schema)
+        db = postgres_utils.DB(config['admin_dbase']+dbname)
+        db.tables_create(schema)
 
     elif command == 'tables-list':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        postgres_utils.connect(config['admin_dbase']+dbname)
-        print( "\n".join(postgres_utils.tables_list() ))
+        db = postgres_utils.DB(config['admin_dbase']+dbname)
+        print( "\n".join(db.tables_list() ))
 
     elif command == 'tables-delete':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        postgres_utils.connect(config['admin_dbase']+dbname)
-        postgres_utils.tables_delete()
+        db = postgres_utils.DB(config['admin_dbase']+dbname)
+        db.tables_delete()
 
     elif command == 'table-details':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         tbname = args_utils.get_or_fail(args.command, "Missing table name")
-        postgres_utils.connect(config['admin_dbase']+dbname)
-        tbl = postgres_utils.table_details(tbname)
+        db = postgres_utils.DB(config['admin_dbase']+dbname)
+        tbl = db.table_details(tbname)
         print(f"Table: {dbname}.{tbname}")
         print(tabulate.tabulate(tbl, headers={'column_name':'name', 'data_type':'type'}))
 

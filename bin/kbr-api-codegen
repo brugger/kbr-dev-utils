@@ -262,16 +262,16 @@ def main():
             args.command.pop(args.command.index('header'))
             print(module_header())
 
-        postgres_utils.connect(config['admin_dbase']+dbname)
+        db = postgres_utils.DB(config['admin_dbase']+dbname)
 
         if args.all_tables:
-            args.command +=  postgres_utils.tables_list()
+            args.command +=  db.tables_list()
 
 
         while len(args.command):
 
             tbname = args_utils.get_or_default(args.command, "Missing table name")
-            tbl = postgres_utils.table_details(tbname)
+            tbl = db.table_details(tbname)
             if command == 'api':
                 print_table_api(tbname, tbl)
             elif command == 'cli':
