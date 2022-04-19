@@ -232,9 +232,84 @@ def utils_cmds(args) -> None:
         print("utils sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
 
+def read_json_config() -> dict:
+    config_file = os.getenv("HOME") + "/.kbr_dev_utils.json"
+
+    try:
+
+        config = config_utils.readin_config_file(config_file)
+        return config
+    except Exception as e :
+#        print (e)
+        print("Error:")
+        print(f"{config_file}, does not exit\n")        
+        print("Howto create:\nsudo -u postgres psql")
+        print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
+        print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
+        sys.exit()
+
 
 def postgres_cmds(args) -> None:
-    commands = {'uc':'user-create', 'ud':'user-delete', 'ul':'user-list',
+    commands = {'d':'database', 'u':'user', 't':'table', 'h':'help'}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'user':
+        postgres_user_cmds(args)
+    elif command == 'database':
+        postgres_database_cmds(args)
+    elif command == 'tables':
+        postgres_table_cmds(args)
+    else:
+        print("postgres : {}".format(args_utils.pretty_commands(commands)))
+        sys.exit()
+
+
+
+
+def postgres_user_cmds(args) -> None:
+    commands = {'c':'create', 'u':'delete', 'l':'list', 'h':'help'}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    config = read_json_config()
+
+    if command == 'create':
+        username = args_utils.get_or_fail(args.command, "Missing username")
+        password = args_utils.get_or_fail(args.command, "Missing password")
+
+        if db.user_get(username) is not None:
+            print(f"{username} already exists")
+        else:
+            db.user_create(username, password)
+
+    elif command == 'delete':
+        username = args_utils.get_or_fail(args.command, "Missing username")
+        if db.user_get(username) is None:
+            print(f"{username} don't exists")
+        else:
+            db.user_delete(username)
+
+    elif command == 'list':
+            users = db.user_list()
+            print(tabulate.tabulate(users, headers={'rolname':'name', 'rolsuper':'admin'}))
+
+    else:
+        print("postgres : {}".format(args_utils.pretty_commands(commands)))
+        sys.exit()
+
+
+
+def postgres_cmds_old(args) -> None:
+    commands = {'c':'create', 'u':'delete', 'l':'list',
                 'dc':'database-create', 'dd': 'database-delete', 'dl': 'database-list',
                 'tc':'tables-create', 'tl':'tables-list', 'td':'tables-delete', 
                 'tdt':'table-details',
@@ -263,29 +338,7 @@ def postgres_cmds(args) -> None:
     db = postgres_utils.DB(config['admin_dbase']+"postgres")
 
 
-    if command == 'user-create':
-        username = args_utils.get_or_fail(args.command, "Missing username")
-        password = args_utils.get_or_fail(args.command, "Missing password")
-
-        if db.user_get(username) is not None:
-            print(f"{username} already exists")
-        else:
-            db.user_create(username, password)
-
-    elif command == 'user-delete':
-        username = args_utils.get_or_fail(args.command, "Missing username")
-        if db.user_get(username) is None:
-            print(f"{username} don't exists")
-        else:
-            db.user_delete(username)
-
-    elif command == 'user-list':
-
-            users = db.user_list()
-            print(tabulate.tabulate(users, headers={'rolname':'name', 'rolsuper':'admin'}))
-
-
-    elif command == 'database-create':
+    if command == 'database-create':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         username = args_utils.get_or_default(args.command, None)
         if db.database_exists(dbname):
