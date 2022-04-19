@@ -55,6 +55,7 @@ def create_entry(tblname:str, tbl:dict=None) -> str:
 
     return f"""
     def {tblname}_create(self{", ".join(required)}, **values) -> dict:
+{required_values}        
         p = self._db.add('{tblname}', values)
 
         return self._db.get('{tblname}', **values)\n"""
@@ -81,7 +82,7 @@ def create_entry_unique(tblname:str, tbl:dict=None) -> str:
 
         return self._db.get('{tblname}', **values)\n"""
 
-    if len(required) == 2:
+    if len(required) == 2 and required_key is not None:
         unique_copy = f"""
         return self._db.add_unique('{tblname}', **values, '{required_key}')\n"""
 
