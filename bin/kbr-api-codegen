@@ -70,7 +70,7 @@ def create_entry_unique(tblname:str, tbl:dict=None) -> str:
         if row['is_nullable'] == 'NO' and row['column_name'] != 'id':
             required.append( f"{row['column_name']}:{to_python_type(row['data_type'])}")
             required_values += f"        values['{row['column_name']}'] = {row['column_name']}\n"
-            if required_key is not None:
+            if required_key is None:
                 required_key = row['column_name']
 
     unique_copy = f"""
@@ -265,12 +265,13 @@ def main():
         db = postgres_utils.DB(config['admin_dbase']+dbname)
 
         if args.all_tables:
-            args.command +=  db.tables_list()
+            args.command +=  [ v['tablename'] for v in db.tables_list()]
 
 
         while len(args.command):
 
             tbname = args_utils.get_or_default(args.command, "Missing table name")
+#            print(tbname)
             tbl = db.table_details(tbname)
             if command == 'api':
                 print_table_api(tbname, tbl)
