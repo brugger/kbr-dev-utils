@@ -84,7 +84,7 @@ def create_entry_unique(tblname:str, tbl:dict=None) -> str:
 
     if len(required) == 2 and required_key is not None:
         unique_copy = f"""
-        return self._db.add_unique('{tblname}', **values, '{required_key}')\n"""
+        return self._db.add_unique('{tblname}', values, '{required_key}')\n"""
 
 
     return f"""
