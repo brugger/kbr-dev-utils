@@ -12,16 +12,105 @@ from urllib.parse import urlparse
 import kbr.args_utils as args_utils
 import kbr.version_utils as version_utils
 import kbr.dbase.postgres_utils as postgres_utils
+from jinja2 import Template
 
 version = version_utils.as_string('kbr')
 
 db = None
 
- 
-def list_entries(tblname:str) -> str:
-    return f"""
-    def {tblname}s(self, **values) -> dict:
-        return self._db.get('{tblname}', **values)\n"""
+
+api_template = """##### {{tblname}} #####
+
+    def {{tblname}}_create(self{{required_args|join(', ')}}, **values) -> dict:
+{% for param in required_params %}
+        values['{{param}}'] = {{param}}{% endfor %}
+
+        p = self._db.add('{{tblname}}', values)
+
+        return self._db.get('{{tblname}}', **values)
+
+{% if required_params|length == 1 %}
+    def {{tblname}}_create_unique(self{{ required_args|join(', ') }}, **values) -> dict:
+{% for param in required_params %}
+        values['{{param}}'] = {{param}}{% endfor %}
+
+        return self._db.add_unique('{{tblname}}', values, {{required_params}})
+
+{% endif %}
+    def {{tblname}}(self, id:str) -> dict:
+        return self._db.get_by_id('{{tblname}}', id)
+
+    def {{tblname}}s(self, **values) -> dict:
+        return self._db.get('{{tblname}}', **values)
+
+    def {{tblname}}_update(self, **values) -> dict:
+        self._db.update('{{tblname}}', values, {'id': values['id']})
+
+    def {{tblname}}_delete(self, id) -> None:
+        self._db.delete('{{tblname}}', id=id)
+
+    def {{tblname}}_purge(self) -> None:
+        self._db.purge('{{tblname}}')
+
+"""
+
+cli_template = """
+
+def {{tblname}}_cmd(args) -> None:
+
+    commands = {'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}
+
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        data = {}
+{% for param in required%}
+        data[{{param}}] = args_utils.get_or_fail(args, "Missing {{param}}"){% endfor %}
+{% for param in optional%}
+        data[{{param}}] = args_utils.get_or_default(args, None){% endfor %}
+
+        db.{{tblname}}_create(**data)
+#        db.{{tblname}}_create({{params|join(', ')}})
+
+    elif command == 'show':
+        id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
+        entry = db.{{tblname}}(id)
+        print( tabulate([entry], headers={}, tablefmt='psql'))
+
+    elif command == 'list':
+        {{tblname}}s = db.{{tblname}}s()
+        print( tabulate({{tblname}}s, headers={}, tablefmt='psql'))
+
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
+        data = args_utils.group_args( args )
+        data['id'] = id
+        del grouped_args['rest']
+
+        db.{{tblname}}_update(data)
+
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
+        db.{{tblname}}_delete(id)
+    elif command == 'purge':
+        db.{{tblname}}_purge()
+
+    else:
+        print("Help:")
+        print("-----------------")
+        print("{{tblname}} list")
+        print("{{tblname}} create {% for r in required %}[{{r}}] {% endfor %}{% for r in optional %}<{{r}}> {% endfor %}
+        print("{{tblname}} show [id]")
+        print("{{tblname}} update [id] {% for r in required+optional %}{{r}}:{{r}} {% endfor %}
+        print("{{tblname}} delete [id]")
+        print("{{tblname}} purge")
+        sys.exit()
+
+"""
 
 
 def to_python_type(dtype:str) -> str:
@@ -35,80 +124,6 @@ def to_python_type(dtype:str) -> str:
         return "str"
     else:
         return "any"
-
-
-
-def create_entry(tblname:str, tbl:dict=None) -> str:
-#    import pprint as pp
-#    pp.pprint(tbl)
-#    pp.pprint(foreign_keys)
-
-    required = [""]
-    required_values = ""
-    required_key = None
-    for row in tbl:
-        if row['is_nullable'] == 'NO' and row['column_name'] != 'id':
-            required.append( f"{row['column_name']}:{to_python_type(row['data_type'])}")
-            required_values += f"        values['{row['column_name']}'] = {row['column_name']}\n"
-            if required_key is not None:
-                required_key = row['column_name']
-
-    return f"""
-    def {tblname}_create(self{", ".join(required)}, **values) -> dict:
-{required_values}        
-        p = self._db.add('{tblname}', values)
-
-        return self._db.get('{tblname}', **values)\n"""
-
-
-def create_entry_unique(tblname:str, tbl:dict=None) -> str:
-
-    required = [""]
-    required_values = ""
-    required_key = None
-    for row in tbl:
-        if row['is_nullable'] == 'NO' and row['column_name'] != 'id':
-            required.append( f"{row['column_name']}:{to_python_type(row['data_type'])}")
-            required_values += f"        values['{row['column_name']}'] = {row['column_name']}\n"
-            if required_key is None:
-                required_key = row['column_name']
-
-    unique_copy = f"""
-        v = self._db.get_single('{tblname}', **values)
-        if v is not None:
-            return v
-
-        p = self._db.add('{tblname}', **values)
-
-        return self._db.get('{tblname}', **values)\n"""
-
-    if len(required) == 2 and required_key is not None:
-        unique_copy = f"""
-        return self._db.add_unique('{tblname}', values, '{required_key}')\n"""
-
-
-    return f"""
-    def {tblname}_create_unique(self{", ".join(required)}, **values) -> dict:
-{required_values}
-{unique_copy}"""
-
-
-
-def update_entry(tblname:str) -> str:
-    return f"""
-    def {tblname}_update(self, values: dict) -> dict:
-        self._db.update('{tblname}', values, {{'id': values['id']}})\n"""
-
-
-def delete_entry(tblname:str) -> str:
-    return f"""    
-    def {tblname}_delete(self, id) -> None:
-        self._db.delete('{tblname}', id=id)\n"""
-
-def purge_table(tblname:str) -> str:
-    return f"""    
-    def {tblname}_purge(self) -> None:
-        self._db.purge('{tblname}')\n"""
 
 
 def module_header() -> str:
@@ -126,24 +141,25 @@ class DB(object):
             self._db.close()
 """
 
-def print_table_api(tbname:str, tbl:list) -> None:
-    print( f"##### {tbname} #####")
-    print(create_entry(tbname, tbl))
-    print(create_entry_unique(tbname, tbl))
-    print(list_entries(tbname))
-    print(update_entry(tbname))
-    print(delete_entry(tbname))    
-    print(purge_table(tbname))
+def print_api_for_table(tblname:str, tbl:list) -> None:
+
+    required_args = [""]
+    required_params = []
+    for row in tbl:
+        if row['is_nullable'] == 'NO' and row['column_name'] != 'id':
+            required_args.append( f"{row['column_name']}:{to_python_type(row['data_type'])}")
+            required_params.append( row['column_name'])
+
+
+    template = Template(api_template)
+    print(template.render({'tblname': tblname, 'required_args':required_args, 'required_params': required_params}))
 
 
 
-def print_cli_api(tbname:str, tbl:list) -> None:
+def print_cli_for_table(tblname:str, tbl:list) -> None:
 
-    mandatory = []
+    required = []
     optional  = []
-
-    mandatory_args = ""
-    optional_args  = ""
     params = []
     for row in tbl:
         name = row['column_name']
@@ -151,75 +167,12 @@ def print_cli_api(tbname:str, tbl:list) -> None:
             continue
         params.append(f"{name}={name}")
         if row['is_nullable'] == 'NO':
-            mandatory.append( name)
-            mandatory_args += f'        {name} = args_utils.get_or_fail(args, "Missing {name}")\n'
+            required.append( name)
         else:
-            optional_args += f'        {name} = args_utils.get_or_default(args, None)\n'
             optional.append( name)
 
-    print(f"""
-def {tbname}_cmd(args) -> None:
-
-    commands = {{'c':'create', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}}
-    if len(args) == 0:
-        args.append('help')
-
-    command = args.pop(0)
-    command = args_utils.valid_command(command, commands)
-""")
-
-    print(f"""
-    if command == 'create':
-{mandatory_args}{optional_args}
-        db.{tbname}_create({", ".join(params)})""")
-
-    print(f"""
-    elif command == 'list':
-        {tbname}s = db.{tbname}s()
-        print( tabulate({tbname}s, headers={{}}, tablefmt='psql'))""")
-
-    print(f"""
-    elif command == 'update':
-        id = args_utils.get_or_fail(args, "Missing {tbname} id")
-{mandatory_args}{optional_args}""")
-    print("        data = {'id':id}")
-    for v in mandatory+optional:
-        print(f"        if {v} is not None:")
-        print(f"            data['{v}'] = {v}")
-    print(f"""\n        db.{tbname}_update(data)""")
-
-    print(f"""
-    elif command == 'delete':
-        id = args_utils.get_or_fail(args, "Missing {tbname} id")
-        db.{tbname}_delete(id)""")
-
-    print(f"""
-    elif command == 'purge':
-        db.{tbname}_purge()""")
-
-
-
-    if len(mandatory):
-        mandatory = f"[{'] ['.join(mandatory)}] "
-    else:
-        mandatory = ""
-    
-    if len(optional):
-        optional = f"<{'> <'.join(optional)}>"
-    else:
-        optional = ""
-
-    print(f"""
-    else:
-        print("Help:")
-        print("-----------------")
-        print("{tbname} list")
-        print("{tbname} create {mandatory}{optional}")
-        print("{tbname} update [id] {mandatory}{optional}")
-        print("{tbname} delete [id]")
-        sys.exit()""")
-
-
+    template = Template(cli_template)
+    print(template.render({'tblname': tblname, 'required': required, 'optional': optional, 'params':params}))
 
 
 def print_facade(project:str) -> None:
@@ -282,13 +235,13 @@ def main():
 
         while len(args.command):
 
-            tbname = args_utils.get_or_default(args.command, "Missing table name")
+            tblname = args_utils.get_or_default(args.command, "Missing table name")
 #            print(tbname)
-            tbl = db.table_details(tbname)
+            tbl = db.table_details(tblname)
             if command == 'api':
-                print_table_api(tbname, tbl)
+                print_api_for_table(tblname, tbl)
             elif command == 'cli':
-                print_cli_api(tbname, tbl)
+                print_cli_for_table(tblname, tbl)
 
 
 
