@@ -102,8 +102,13 @@ def update_entry(tblname:str) -> str:
 
 def delete_entry(tblname:str) -> str:
     return f"""    
-    def {tblname}_delete(self, id) -> dict:
+    def {tblname}_delete(self, id) -> None:
         self._db.delete('{tblname}', id=id)\n"""
+
+def purge_table(tblname:str) -> str:
+    return f"""    
+    def {tblname}_purge(self) -> None:
+        self._db.purge('{tblname}')\n"""
 
 
 def module_header() -> str:
@@ -128,6 +133,7 @@ def print_table_api(tbname:str, tbl:list) -> None:
     print(list_entries(tbname))
     print(update_entry(tbname))
     print(delete_entry(tbname))    
+    print(purge_table(tbname))
 
 
 
@@ -154,7 +160,7 @@ def print_cli_api(tbname:str, tbl:list) -> None:
     print(f"""
 def {tbname}_cmd(args) -> None:
 
-    commands = {{'c':'create', 'l':'list', 'u':'update', 'd': 'delete', 'h':'help'}}
+    commands = {{'c':'create', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}}
     if len(args) == 0:
         args.append('help')
 
@@ -186,6 +192,12 @@ def {tbname}_cmd(args) -> None:
     elif command == 'delete':
         id = args_utils.get_or_fail(args, "Missing {tbname} id")
         db.{tbname}_delete(id)""")
+
+    print(f"""
+    elif command == 'purge':
+        db.{tbname}_purge()""")
+
+
 
     if len(mandatory):
         mandatory = f"[{'] ['.join(mandatory)}] "
