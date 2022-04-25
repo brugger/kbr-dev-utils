@@ -114,28 +114,29 @@ def {{tblname}}_cmd(args) -> None:
 
 rest_template = """
 
-class {{tblname}}DetailHandler ( tornado.BaseHandler ):
+class {{tblname|capitalize}}DetailHandler ( tornado.BaseHandler ):
 
     def endpoint(self):
         return("/{{tblname}}/[id]")
 
     def get(self, id:str):
-        {{tblname}}  = db.{{tblname}}_get(id=id)
+        {{tblname}}  = db.{{tblname}}(id=id)
         if {{tblname}} is None:
             self.send_response_404()
 
         return self.send_response( data={{tblname}})
 
     def patch(self, id:str):
-        {{tblname}} = db.{{tblname}}_get(id=id)
+        {{tblname}} = db.{{tblname}}(id=id)
         if {{tblname}} is None:
             self.send_response_404()
 
         values = self.post_values()
         # Check and change here!
         self.valid_arguments(data, [{{table_fields|join(", ")}}])
+        values['id'] = id
 
-        db.{{tblname}}_update(id=id, data)
+        db.{{tblname}}_update(values)
         return self.send_response_204( )
 
     def delete(self, id:str):
@@ -145,7 +146,7 @@ class {{tblname}}DetailHandler ( tornado.BaseHandler ):
         except:
             return self.send_response_400()
 
-class {{tblname}}sListHandler( tornado.BaseHandler):
+class {{tblname|capitalize}}sListHandler( tornado.BaseHandler):
     def endpoint(self):
         return "/{{tblname}}s/"
 
@@ -167,22 +168,9 @@ class {{tblname}}sListHandler( tornado.BaseHandler):
         self.valid_arguments(filter, [{{table_fields|join(', ')}}])
         return self.send_response( db.{{tblname}}s( **filter ))
 
-class {{tblname}}DoHandler (tornado.BaseHandler):
-
-    def endpoint(self):
-        return("/{{tblname}}/do/")
-
-    def post(self, id:str, ):
-        values = self.post_values()
-        self.require_arguments(values, ['action'])
-        self.valid_arguments(values, [{{table_fields|join(', ')}}])
-
-        return self.send_response_501()
-
 """
 
-rest_file_template = """
-#!/usr/bin/env python
+rest_file_template = """#!/usr/bin/env python
 
 ''' REST API for {{project}}'''
 
@@ -193,9 +181,9 @@ import kbr.config_utils as config_utils
 import kbr.version_utils as version_utils
 
 #import kbr_api.auth     as oauth
-import kbr_api.tornado   as tornado
+import kbr.tornado   as tornado
 
-import {{project}}.db as {{project}}_db
+import {{project}}.facade as {{project}}_db
 
 
 db = None
@@ -242,9 +230,8 @@ def main():
 
     urls = [('/', RootHandler),
 {% for table in tables %}    
-            (r'/{{table}}s/do/?$',     {{table|capitalize}}sDoHandler),
-            (r'/{{table}}s/(\d+)/?$',  {{table|capitalize}}DetailHandler),
-            (r'/{{table}}/?$',         {{table|capitalize}}sListHandler),{%endfor%}
+            (r'/{{table}}/(\d+)/?$',  {{table|capitalize}}DetailHandler),
+            (r'/{{table}}s/?$',         {{table|capitalize}}sListHandler),{%endfor%}
 
             ]# + oauth.init( **config.oauth )
 
@@ -309,10 +296,16 @@ def table_cmd(args) -> None:
     print(template.render({'tables': tables}))
 
 
-def rest_header(tables:list) -> None:
+def rest_header(project:str,tables:list) -> None:
 
     template = Template(rest_file_template)
-    print(template.render({'tables': tables}))
+
+    handlers = ""
+    for tblname in tables:
+        tbl = db.table_details(tblname)
+        handlers += rest_for_table(tblname, tbl)
+
+    print(template.render({'project':project, 'tables': tables, 'handlers':handlers}))
 
 def print_api_for_table(tblname:str, tbl:list) -> None:
 
@@ -328,8 +321,7 @@ def print_api_for_table(tblname:str, tbl:list) -> None:
     print(template.render({'tblname': tblname, 'required_args':required_args, 'required_params': required_params}))
 
 
-
-def print_rest_for_table(tblname:str, tbl:list) -> None:
+def rest_for_table(tblname:str, tbl:list) -> str:
 
     fields_required = []
     fields = []
@@ -340,7 +332,12 @@ def print_rest_for_table(tblname:str, tbl:list) -> None:
         fields.append(f"'{row['column_name']}'")
 
     template = Template(rest_template)
-    print(template.render({'tblname': tblname, 'table_fields':fields, 'table_required_fields': fields_required}))
+    return template.render({'tblname': tblname, 'table_fields':fields, 'table_required_fields': fields_required})
+
+
+
+def print_rest_for_table(tblname:str, tbl:list) -> None:
+    print( rest_for_table(tblname, tbl))
 
 
 def print_cli_for_table(tblname:str, tbl:list) -> None:
@@ -393,6 +390,7 @@ def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
     commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
+    parser.add_argument('-p', '--project-name', help="project name (if differs from database name!)")
     parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
     parser.add_argument('command', nargs='+', help="List of tables to make api code for")
 
@@ -405,6 +403,18 @@ def main():
         command = commands[ command ]
 
 
+    if command == 'help':
+        print("Help")
+        print("header: wrap in to a full file")
+        print("=======")
+        print("api [dbase-name] <header> <tables or -A>")
+        print("cli [dbase-name] <header> <tables or -A>")
+        print("rest [dbase-name] <header> <tables or -A>")
+        print("facade [project-name]")
+        print("everything [dbname-name] (Not done yet!)")
+        print("")
+
+
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
         print_facade( pname )
@@ -414,21 +424,21 @@ def main():
             args.command.pop(args.command.index('header'))
             print(module_header())
 
+        global db
         db = postgres_utils.DB(config['admin_dbase']+dbname)
 
         if command == 'cli' and 'header' in args.command:
             args.command.pop(args.command.index('header'))
             cli_header([ v['tablename'] for v in db.tables_list()])
 
-
-        if command == 'rest' and 'header' in args.command:
-            args.command.pop(args.command.index('header'))
-            rest_header([ v['tablename'] for v in db.tables_list()])
-            sys.exit()
-
         if args.all_tables:
             args.command +=  [ v['tablename'] for v in db.tables_list()]
 
+        if command == 'rest' and 'header' in args.command:
+            args.command.pop(args.command.index('header'))
+
+            rest_header(dbname, args.command)
+            sys.exit()
 
         while len(args.command):
 
