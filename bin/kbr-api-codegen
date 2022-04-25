@@ -545,9 +545,10 @@ def read_config(config_file) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'e':'everything', 'h':'help'}
+    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'b':'bootstrap', 'h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
     parser.add_argument('-p', '--project-name', help="project name (if differs from database name!)")
+    parser.add_argument('-f', '--force', default=False, help="overwrite files", action="store_true")
     parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
     parser.add_argument('command', nargs='+', help="List of tables to make api code for")
 
@@ -570,7 +571,7 @@ def main():
         print("cli [dbase-name] <blueprint> <tables or -A>")
         print("rest [dbase-name] <blueprint> <tables or -A>")
         print("facade [project-name]")
-        print("everything [dbname-name]")
+        print("bootstrap <--force> [dbname-name] <tables, otherwise all will be used>")
         print("")
         sys.exit()
 
@@ -581,7 +582,7 @@ def main():
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
         print(facade_blueprint( pname ))
-    elif command == 'everything':
+    elif command == 'bootstrap':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         db = postgres_utils.DB(config['admin_dbase']+dbname)
 
@@ -595,36 +596,40 @@ def main():
         os.makedirs(project_name, exist_ok = True, mode=0o755,  )
         os.makedirs("bin", exist_ok = True, mode=0o755)
 
-        fh = open(f"bin/{project_name}-cli", 'w')
-        fh.write( cli_blueprint(project_name, args.command ))
-        fh.close()
-        os.chmod(f"bin/{project_name}-cli", 0o755)
+        if not os.path.isfile(f"bin/{project_name}-cli") or args.force:
+            fh = open(f"bin/{project_name}-cli", 'w')
+            fh.write( cli_blueprint(project_name, args.command ))
+            fh.close()
+            os.chmod(f"bin/{project_name}-cli", 0o755)
 
-        fh = open(f"bin/{project_name}-api.py", 'w')
-        fh.write( rest_blueprint(project_name, args.command ))
-        fh.close()
-        os.chmod(f"bin/{project_name}-api.py", 0o755)
+        if not os.path.isfile(f"bin/{project_name}-api.py") or args.force:
+            fh = open(f"bin/{project_name}-api.py", 'w')
+            fh.write( rest_blueprint(project_name, args.command ))
+            fh.close()
+            os.chmod(f"bin/{project_name}-api.py", 0o755)
 
-        fh = open(f"{project_name}/db.py", 'w')
-        fh.write( api_blueprint(args.command))
+        if not os.path.isfile(f"{project_name}/db.py") or args.force:
+            fh = open(f"{project_name}/db.py", 'w')
+            fh.write( api_blueprint(args.command))
+            fh.close()
 
-        fh.close()
+        if not os.path.isfile(f"{project_name}/facade.py") or args.force:
+            fh = open(f"{project_name}/facade.py", 'w')
+            fh.write( facade_blueprint(project_name))
+            fh.close()
 
-        fh = open(f"{project_name}/facade.py", 'w')
-        fh.write( facade_blueprint(project_name))
-        fh.close()
+        if not os.path.isfile("requirements.txt") or args.force:
+            fh = open(f"requirements.txt", 'w')
+            fh.write("kbr@git+https://github.com/brugger/kbr-tools.git@2_0\n")
+            fh.write("records@git+https://github.com/brugger/records.git\n")
+            fh.write("kbr-tornado@git+https://github.com/brugger/kbr-tools-tornado.git\n")
+            fh.write("kbr-dbase@git+https://github.com/brugger/kbr-tools-dbase.git\n")
+            fh.close()
 
-
-        fh = open(f"requirements.txt", 'w')
-        fh.write("kbr@git+https://github.com/brugger/kbr-tools.git@2_0\n")
-        fh.write("records@git+https://github.com/brugger/records.git\n")
-        fh.write("kbr-tornado@git+https://github.com/brugger/kbr-tools-tornado.git\n")
-        fh.write("kbr-dbase@git+https://github.com/brugger/kbr-tools-dbase.git\n")
-        fh.close()
-
-        fh = open(f"version.json", 'w')
-        fh.write('{"major": 0, "minor": 0, "patch": 0}')
-        fh.close()
+        if not os.path.isfile("version.json") or args.force:
+            fh = open(f"version.json", 'w')
+            fh.write('{"major": 0, "minor": 0, "patch": 0}')
+            fh.close()
 
 
         sys.exit()
