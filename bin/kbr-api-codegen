@@ -4,10 +4,8 @@
 import argparse
 import sys
 import os
-from unittest import case
 
 from kbr import config_utils
-from urllib.parse import urlparse
 
 import kbr.args_utils as args_utils
 import kbr.version_utils as version_utils
@@ -103,9 +101,9 @@ def {{tblname}}_cmd(args) -> None:
         print("Help:")
         print("-----------------")
         print("{{tblname}} list")
-        print("{{tblname}} create {% for r in required %}[{{r}}] {% endfor %}{% for r in optional %}<{{r}}> {% endfor %}
+        print("{{tblname}} create {% for r in required %}[{{r}}] {% endfor %}{% for r in optional %}<{{r}}> {% endfor %}")
         print("{{tblname}} show [id]")
-        print("{{tblname}} update [id] {% for r in required+optional %}{{r}}:{{r}} {% endfor %}
+        print("{{tblname}} update [id] {% for r in required+optional %}{{r}}:{{r}} {% endfor %} ")
         print("{{tblname}} delete [id]")
         print("{{tblname}} purge")
         sys.exit()
@@ -242,20 +240,6 @@ if __name__ == "__main__":
 """
 
 
-def module_blueprint() -> str:
-    return """
-import kbr.db_utils as db
-
-class DB(object):
-
-    def connect(self, url: str) -> None:
-        self._db = db.DB(url)
-
-    def disconnect(self) -> None:
-
-        if self._db is not None:
-            self._db.close()
-"""
 
 def cli_blueprint(project:str, tables:list) -> None:
 
@@ -337,7 +321,7 @@ def utils_cmd(args) -> None:
 
 
 def table_cmd(args) -> None:
-    commands = { {%for t in tables%}'{{t[0]}}':'{{t}}'{% endfor %} 'h':'help'}
+    commands = { {%for t in tables%}'{{t[0]}}':'{{t}}',{% endfor %} 'h':'help'}
 
     if len(args.command) == 0:
         args.command.append('help')
@@ -411,11 +395,15 @@ if __name__ == "__main__":
         tbl = db.table_details(tblname)
         cmds += cli_for_table(tblname, tbl)
 
-    print(template.render({'tables': tables, 'cmds':cmds}))
+    return template.render({'tables': tables, 'cmds':cmds, 'project': project})
+
+
+def print_cli_blueprint(project:str, tables:list) -> None:
+    print( cli_blueprint(project, tables) )
 
 
 
-def rest_blueprint(project:str, tables:list) -> None:
+def rest_blueprint(project:str, tables:list) -> str:
 
     template = Template(rest_file_template)
 
@@ -424,9 +412,12 @@ def rest_blueprint(project:str, tables:list) -> None:
         tbl = db.table_details(tblname)
         handlers += rest_for_table(tblname, tbl)
 
-    print(template.render({'project':project, 'tables': tables, 'handlers':handlers}))
+    return template.render({'project':project, 'tables': tables, 'handlers':handlers})
 
-def print_api_for_table(tblname:str, tbl:list) -> None:
+def print_rest_blueprint(project:str, tables:list) -> None:
+    print( rest_blueprint(project, tables))
+
+def api_for_table(tblname:str, tbl:list) -> None:
 
     required_args = [""]
     required_params = []
@@ -437,7 +428,31 @@ def print_api_for_table(tblname:str, tbl:list) -> None:
 
 
     template = Template(api_template)
-    print(template.render({'tblname': tblname, 'required_args':required_args, 'required_params': required_params}))
+    return template.render({'tblname': tblname, 'required_args':required_args, 'required_params': required_params})
+
+
+def api_blueprint(tables:list=[]) -> str:
+
+    blueprint_template = """
+import kbr.db_utils as db
+
+class DB(object):
+
+    def connect(self, url: str) -> None:
+        self._db = db.DB(url)
+
+    def disconnect(self) -> None:
+
+        if self._db is not None:
+            self._db.close()
+"""
+
+    api_for_tables = ""
+    for tblname in tables:
+        tbl = db.table_details(tblname)
+        api_for_tables += api_for_table(tblname, tbl)
+
+    return blueprint_template + api_for_tables
 
 
 def rest_for_table(tblname:str, tbl:list) -> str:
@@ -482,8 +497,8 @@ def print_cli_for_table(tblname:str, tbl:list) -> None:
     print( cli_for_table(tblname, tbl))
 
 
-def print_facade(project:str) -> None:
-    print(f"""
+def facade_blueprint(project:str) -> str:
+    return f"""
 import {project}.db as db
 
 class DB(db.DB):
@@ -491,7 +506,7 @@ class DB(db.DB):
     def new_function() -> None:
         print("Add fancy facade stuff here...")
         return
-""")
+"""
 
 
 def to_python_type(dtype:str) -> str:
@@ -524,7 +539,7 @@ def read_config(config_file) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'h':'help'}
+    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'e':'everything', 'h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
     parser.add_argument('-p', '--project-name', help="project name (if differs from database name!)")
     parser.add_argument('-A', '--all-tables', default=False, help="all tables in database", action="store_true")
@@ -538,6 +553,8 @@ def main():
     if command in commands:
         command = commands[ command ]
 
+    command = args_utils.valid_command(command, commands)
+
 
     if command == 'help':
         print("Help")
@@ -547,53 +564,78 @@ def main():
         print("cli [dbase-name] <blueprint> <tables or -A>")
         print("rest [dbase-name] <blueprint> <tables or -A>")
         print("facade [project-name]")
-        print("everything [dbname-name] (Not done yet!)")
+        print("everything [dbname-name]")
         print("")
+        sys.exit()
 
 
 
+    global db
 
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
-        print_facade( pname )
+        print(facade_blueprint( pname ))
+    elif command == 'everything':
+        dbname = args_utils.get_or_fail(args.command, "Missing database name")
+        db = postgres_utils.DB(config['admin_dbase']+dbname)
+
+        project_name = dbname
+        if args.project_name is not None:
+            project_name = args.project_name
+
+        if len(args.command) == []:
+            args.command +=  [ v['tablename'] for v in db.tables_list()]
+
+        os.makedirs(project_name, exist_ok = True, mode=0o755,  )
+        os.makedirs("bin", exist_ok = True, mode=0o755)
+
+        fh = open(f"bin/{project_name}-cli", 'w')
+        fh.write( cli_blueprint(project_name, args.command ))
+        fh.close()
+        os.chmod(f"bin/{project_name}-cli", 0o755)
+
+        fh = open(f"bin/{project_name}-api.py", 'w')
+        fh.write( rest_blueprint(project_name, args.command ))
+        fh.close()
+        os.chmod(f"bin/{project_name}-api.py", 0o755)
+
+        fh = open(f"{project_name}/db.py", 'w')
+        fh.write( api_blueprint(args.command))
+
+        fh.close()
+
+        fh = open(f"{project_name}/facade.py", 'w')
+        fh.write( facade_blueprint(project_name))
+        fh.close()
+
+        sys.exit()
+
+
     elif command in ['api', 'cli', 'rest']:
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
 
         if args.project_name is None:
             args.project_name = dbname
 
-        global db
+#        global db
         db = postgres_utils.DB(config['admin_dbase']+dbname)
-
-
-        if command == 'everything':
-            args.command +=  [ v['tablename'] for v in db.tables_list()]
-            project_name = args.project_name
-            sys.mkdir(project_name)
-            sys.mkdir("bin")
-            args.command +=  [ v['tablename'] for v in db.tables_list()]
-
-#            fh = open(f"bin/{project-name}-cli")
-#            fh = open(f"bin/{project-name}-api.py")
-#            fh = open(f"{project-name}/db.py")
-#            fh = open(f"{project-name}/facade.py")
-
 
         if args.all_tables: 
             args.command +=  [ v['tablename'] for v in db.tables_list()]
 
         if command == 'api' and 'blueprint' in args.command:
             args.command.pop(args.command.index('blueprint'))
-            print(module_blueprint())
+            print(api_blueprint(args.command))
+            sys.exit()
 
         if command == 'cli' and 'blueprint' in args.command:
             args.command.pop(args.command.index('blueprint'))
-            cli_blueprint(args.project_name, args.command)
+            print_cli_blueprint(args.project_name, args.command)
             sys.exit()
 
         if command == 'rest' and 'blueprint' in args.command:
             args.command.pop(args.command.index('blueprint'))
-            rest_blueprint(args.project_name, args.command)
+            print_rest_blueprint(args.project_name, args.command)
             sys.exit()
 
         while len(args.command):
@@ -601,12 +643,15 @@ def main():
             tblname = args_utils.get_or_default(args.command, "Missing table name")
             tbl = db.table_details(tblname)
             if command == 'api':
-                print_api_for_table(tblname, tbl)
+                print(api_for_table(tblname, tbl))
             elif command == 'cli':
                 print_cli_for_table(tblname, tbl)
             elif command == 'rest':
                 print_rest_for_table(tblname, tbl)
 
+    else:
+        parser.print_help()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
