@@ -79,11 +79,11 @@ def {{tblname}}_cmd(args) -> None:
     elif command == 'show':
         id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
         entry = db.{{tblname}}(id)
-        print( tabulate(entry, headers={}, tablefmt='psql'))
+        print( tabulate(entry, blueprints={}, tablefmt='psql'))
 
     elif command == 'list':
         {{tblname}}s = db.{{tblname}}s()
-        print( tabulate({{tblname}}s, headers={}, tablefmt='psql'))
+        print( tabulate({{tblname}}s, blueprints={}, tablefmt='psql'))
 
     elif command == 'update':
         id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
@@ -242,21 +242,7 @@ if __name__ == "__main__":
 """
 
 
-
-def to_python_type(dtype:str) -> str:
-    if dtype == 'integer':
-        return "int"
-    elif dtype == 'boolean':
-        return "bool"
-    elif dtype == 'uuid':
-        return "str"
-    elif "character" in dtype:
-        return "str"
-    else:
-        return "any"
-
-
-def module_header() -> str:
+def module_blueprint() -> str:
     return """
 import kbr.db_utils as db
 
@@ -271,9 +257,85 @@ class DB(object):
             self._db.close()
 """
 
-def cli_header(tables:list) -> None:
+def cli_blueprint(project:str, tables:list) -> None:
 
-    header_template = """
+    blueprint_template = """#!/usr/bin/env python3
+import argparse
+import sys
+import csv
+import json
+
+sys.path.append(".")
+
+from tabulate import tabulate
+
+from kbr import config_utils
+import kbr.crypt_utils as crypt_utils
+import kbr.args_utils as args_utils
+import kbr.json_utils as json_utils
+import kbr.type_utils as type_utils
+
+import {{project}}.facade as {{project}}_db
+
+def config_cmd(args, config_file:str='api.json') -> None:
+    commands = {'c':'create', 'p':'print', 'h':'help'}
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        
+        dbname   = args_utils.get_or_fail(args, "database name missing")
+        username = args_utils.get_or_default(args, dbname)
+        password = args_utils.get_or_default(args, crypt_utils.create_password())
+        host     = args_utils.get_or_default(args, "localhost")
+
+        config = {"name": f"{dbname}-api",
+                  "database": f"postgresql://{username}:{password}@{host}/{dbname}",
+                  "logfile": "api.log",
+                  "server": {
+                      "port": 8080,
+                      "template_path": "templates",
+                      "debug": False
+                   }
+                  }
+
+        json_utils.write(config_file, config)
+
+    elif command == 'print':
+        config = dict(config_utils.readin_config_file(config_file))
+        print( json.dumps(config, indent=2))
+    else:
+        print("Help:")
+        print("==========================")
+        print("config print")
+        print("config create  <dbname> [dbuser] [dbpasswd]")
+        print("utils help")
+
+        sys.exit(1)
+
+
+
+def utils_cmd(args) -> None:
+    commands = {'i':'import', 'e':'export', 'h':'help'}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'import':
+        print('Not implemented yet...')
+    elif command == 'export':
+        print('Not implemented yet...')
+    else:
+        print("utils: {}".format(args_utils.pretty_commands(commands)))
+        sys.exit()
+
+
 def table_cmd(args) -> None:
     commands = { {%for t in tables%}'{{t[0]}}':'{{t}}'{% endfor %} 'h':'help'}
 
@@ -290,13 +352,70 @@ def table_cmd(args) -> None:
     else:
         print("table: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
+
+{{cmds}}
+
+
+
+
+def main():
+
+    commands = {'u':'utils', 't':'table', 'c':'config', 'h':'help'}
+
+    parser = argparse.ArgumentParser(description='{project}-cli tool')
+    parser.add_argument('-c', '--config', default="api.json", help="config file, can be overridden by parameters")
+    parser.add_argument('-i', '--ids', default=False, action="store_true", help="Only output IDs on lists")
+    parser.add_argument('command', nargs='*', help="{}".format(",".join(commands.values())))
+
+    args = parser.parse_args()
+
+    args_utils.min_count(1, len(args.command),
+                         msg="{{project}}-cli takes one of the following commands: {}".format(args_utils.pretty_commands(commands)))
+
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'config':
+        config_cmd(args.command, args.config)
+        sys.exit()
+
+    args.config = config_utils.readin_config_file( args.config )
+
+    global db
+    db = {{project}}_db.DB()
+    db.connect( args.config.database )
+
+    if command == 'utils':
+        utils_cmd(args)
+    elif command == 'table':
+        table_cmd(args)
+    elif command == 'help':
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+
 """
 
-    template = Template(header_template)
-    print(template.render({'tables': tables}))
+    template = Template(blueprint_template)
+
+    cmds = ""
+    for tblname in tables:
+        tbl = db.table_details(tblname)
+        cmds += cli_for_table(tblname, tbl)
+
+    print(template.render({'tables': tables, 'cmds':cmds}))
 
 
-def rest_header(project:str,tables:list) -> None:
+
+def rest_blueprint(project:str, tables:list) -> None:
 
     template = Template(rest_file_template)
 
@@ -340,7 +459,7 @@ def print_rest_for_table(tblname:str, tbl:list) -> None:
     print( rest_for_table(tblname, tbl))
 
 
-def print_cli_for_table(tblname:str, tbl:list) -> None:
+def cli_for_table(tblname:str, tbl:list) -> str:
 
     required = []
     optional  = []
@@ -356,7 +475,11 @@ def print_cli_for_table(tblname:str, tbl:list) -> None:
             optional.append( name)
 
     template = Template(cli_template)
-    print(template.render({'tblname': tblname, 'required': required, 'optional': optional, 'params':params}))
+    return template.render({'tblname': tblname, 'required': required, 'optional': optional, 'params':params})
+
+
+def print_cli_for_table(tblname:str, tbl:list) -> None:
+    print( cli_for_table(tblname, tbl))
 
 
 def print_facade(project:str) -> None:
@@ -369,6 +492,19 @@ class DB(db.DB):
         print("Add fancy facade stuff here...")
         return
 """)
+
+
+def to_python_type(dtype:str) -> str:
+    if dtype == 'integer':
+        return "int"
+    elif dtype == 'boolean':
+        return "bool"
+    elif dtype == 'uuid':
+        return "str"
+    elif "character" in dtype:
+        return "str"
+    else:
+        return "any"
 
 
 def read_config(config_file) -> dict:
@@ -405,14 +541,16 @@ def main():
 
     if command == 'help':
         print("Help")
-        print("header: wrap in to a full file")
+        print("blueprint: wrap in to a full file")
         print("=======")
-        print("api [dbase-name] <header> <tables or -A>")
-        print("cli [dbase-name] <header> <tables or -A>")
-        print("rest [dbase-name] <header> <tables or -A>")
+        print("api [dbase-name] <blueprint> <tables or -A>")
+        print("cli [dbase-name] <blueprint> <tables or -A>")
+        print("rest [dbase-name] <blueprint> <tables or -A>")
         print("facade [project-name]")
         print("everything [dbname-name] (Not done yet!)")
         print("")
+
+
 
 
     if command == 'facade':
@@ -420,30 +558,47 @@ def main():
         print_facade( pname )
     elif command in ['api', 'cli', 'rest']:
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
-        if command == 'api' and 'header' in args.command:
-            args.command.pop(args.command.index('header'))
-            print(module_header())
+
+        if args.project_name is None:
+            args.project_name = dbname
 
         global db
         db = postgres_utils.DB(config['admin_dbase']+dbname)
 
-        if command == 'cli' and 'header' in args.command:
-            args.command.pop(args.command.index('header'))
-            cli_header([ v['tablename'] for v in db.tables_list()])
 
-        if args.all_tables:
+        if command == 'everything':
+            args.command +=  [ v['tablename'] for v in db.tables_list()]
+            project_name = args.project_name
+            sys.mkdir(project_name)
+            sys.mkdir("bin")
             args.command +=  [ v['tablename'] for v in db.tables_list()]
 
-        if command == 'rest' and 'header' in args.command:
-            args.command.pop(args.command.index('header'))
+#            fh = open(f"bin/{project-name}-cli")
+#            fh = open(f"bin/{project-name}-api.py")
+#            fh = open(f"{project-name}/db.py")
+#            fh = open(f"{project-name}/facade.py")
 
-            rest_header(dbname, args.command)
+
+        if args.all_tables: 
+            args.command +=  [ v['tablename'] for v in db.tables_list()]
+
+        if command == 'api' and 'blueprint' in args.command:
+            args.command.pop(args.command.index('blueprint'))
+            print(module_blueprint())
+
+        if command == 'cli' and 'blueprint' in args.command:
+            args.command.pop(args.command.index('blueprint'))
+            cli_blueprint(args.project_name, args.command)
+            sys.exit()
+
+        if command == 'rest' and 'blueprint' in args.command:
+            args.command.pop(args.command.index('blueprint'))
+            rest_blueprint(args.project_name, args.command)
             sys.exit()
 
         while len(args.command):
 
             tblname = args_utils.get_or_default(args.command, "Missing table name")
-#            print(tbname)
             tbl = db.table_details(tblname)
             if command == 'api':
                 print_api_for_table(tblname, tbl)
