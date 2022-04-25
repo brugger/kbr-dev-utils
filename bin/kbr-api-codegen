@@ -77,11 +77,11 @@ def {{tblname}}_cmd(args) -> None:
     elif command == 'show':
         id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
         entry = db.{{tblname}}(id)
-        print( tabulate(entry, blueprints={}, tablefmt='psql'))
+        print( tabulate(entry, headers={}, tablefmt='psql'))
 
     elif command == 'list':
         {{tblname}}s = db.{{tblname}}s()
-        print( tabulate({{tblname}}s, blueprints={}, tablefmt='psql'))
+        print( tabulate({{tblname}}s, headers={}, tablefmt='psql'))
 
     elif command == 'update':
         id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
@@ -232,6 +232,10 @@ def main():
             (r'/{{table}}s/?$',         {{table|capitalize}}sListHandler),{%endfor%}
 
             ]# + oauth.init( **config.oauth )
+
+    logger.info(f'Startup {{project}}-api (v:{version})')
+    logger.info(f"Running on port: {config['server'].get('port', 8080)}")
+
 
     tornado.run_app( urls, **config.server )
 
@@ -583,7 +587,7 @@ def main():
         if args.project_name is not None:
             project_name = args.project_name
 
-        if len(args.command) == []:
+        if args.command == []:
             args.command +=  [ v['tablename'] for v in db.tables_list()]
 
         os.makedirs(project_name, exist_ok = True, mode=0o755,  )
@@ -607,6 +611,19 @@ def main():
         fh = open(f"{project_name}/facade.py", 'w')
         fh.write( facade_blueprint(project_name))
         fh.close()
+
+
+        fh = open(f"requirements.txt", 'w')
+        fh.write("kbr@git+https://github.com/brugger/kbr-tools.git@2_0\n")
+        fh.write("records@git+https://github.com/brugger/records.git\n")
+        fh.write("kbr-tornado@git+https://github.com/brugger/kbr-tools-tornado.git\n")
+        fh.write("kbr-dbase@git+https://github.com/brugger/kbr-tools-dbase.git\n")
+        fh.close()
+
+        fh = open(f"version.json", 'w')
+        fh.write('{"major": 0, "minor": 0, "patch": 0}')
+        fh.close()
+
 
         sys.exit()
 
