@@ -267,7 +267,7 @@ import kbr.type_utils as type_utils
 
 import {{project}}.facade as {{project}}_db
 
-def config_cmd(args, config_file:str='api.json') -> None:
+def config_cmd(args, config_file:str='api.json', force:bool=False) -> None:
     commands = {'c':'create', 'p':'print', 'h':'help'}
     if len(args) == 0:
         args.append('help')
@@ -292,7 +292,12 @@ def config_cmd(args, config_file:str='api.json') -> None:
                    }
                   }
 
-        json_utils.write(config_file, config)
+        if not os.path.isfile(config_file) or force:
+           json_utils.write(config_file, config)
+        else:
+            print(f"Cannot overwrite {config_file}")
+            sys.exit(-1)
+
 
     elif command == 'print':
         config = dict(config_utils.readin_config_file(config_file))
@@ -354,6 +359,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='{project}-cli tool')
     parser.add_argument('-c', '--config', default="api.json", help="config file, can be overridden by parameters")
+    parser.add_argument('-f', '--force', default=False, action="store_true", help="overwrite files if exists")
     parser.add_argument('-i', '--ids', default=False, action="store_true", help="Only output IDs on lists")
     parser.add_argument('command', nargs='*', help="{}".format(",".join(commands.values())))
 
@@ -370,7 +376,7 @@ def main():
     command = args_utils.valid_command(command, commands)
 
     if command == 'config':
-        config_cmd(args.command, args.config)
+        config_cmd(args.command, args.config, args.force)
         sys.exit()
 
     args.config = config_utils.readin_config_file( args.config )
