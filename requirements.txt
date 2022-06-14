@@ -2,3 +2,4 @@ kbr@git+https://github.com/brugger/kbr-tools.git@2_0
 kbr-dbase@git+https://github.com/brugger/kbr-tools-dbase.git
 kbr-dbase-postgres@git+https://github.com/brugger/kbr-tools-postgres.git
 Jinja2
+jinja2-strcase
