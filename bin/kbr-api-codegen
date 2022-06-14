@@ -4,6 +4,7 @@
 import argparse
 import sys
 import os
+import re
 
 from kbr import config_utils
 
@@ -112,7 +113,7 @@ def {{tblname}}_cmd(args) -> None:
 
 rest_template = """
 
-class {{tblname|capitalize}}DetailHandler ( tornado.BaseHandler ):
+class {{tblname_camelcase}}DetailHandler ( tornado.BaseHandler ):
 
     def endpoint(self):
         return("/{{tblname}}/[id]")
@@ -122,7 +123,7 @@ class {{tblname|capitalize}}DetailHandler ( tornado.BaseHandler ):
         if {{tblname}} is None:
             self.send_response_404()
 
-        return self.send_response( data={{tblname}}[0])
+        return self.send_response( data={{tblname}})
 
     def patch(self, id:str):
         {{tblname}} = db.{{tblname}}(id=id)
@@ -148,7 +149,7 @@ class {{tblname|capitalize}}DetailHandler ( tornado.BaseHandler ):
         self.allow_options()
 
 
-class {{tblname|capitalize}}sListHandler( tornado.BaseHandler):
+class {{tblname_camelcase}}sListHandler( tornado.BaseHandler):
     def endpoint(self):
         return "/{{tblname}}s/"
 
@@ -164,7 +165,7 @@ class {{tblname|capitalize}}sListHandler( tornado.BaseHandler):
             logger.error(f"Request export tracking error {e}")
             self.send_response_404()
 
-    def options(self, id:str):
+    def options(self):
         self.allow_options()
 
     def get(self):
@@ -237,8 +238,8 @@ def main():
 
     urls = [('/', RootHandler),
 {% for table in tables %}    
-            (r'/{{table}}/(\w+)/?$',  {{table|capitalize}}DetailHandler),
-            (r'/{{table}}s/?$',         {{table|capitalize}}sListHandler),{%endfor%}
+            (r'/{{table}}/(\w+)/?$',  {{table_camelcase}}DetailHandler),
+            (r'/{{table}}s/?$',         {{table_camelcase}}sListHandler),{%endfor%}
 
             ]# + oauth.init( **config.oauth )
 
@@ -486,7 +487,7 @@ def rest_for_table(tblname:str, tbl:list) -> str:
         fields.append(f"'{row['column_name']}'")
 
     template = Template(rest_template)
-    return template.render({'tblname': tblname, 'table_fields':fields, 'table_required_fields': fields_required})
+    return template.render({'tblname': tblname, 'table_fields':fields, 'table_required_fields': fields_required, 'tblname_camelcase': snake2CamelCase(name)})
 
 
 
@@ -527,6 +528,15 @@ class DB(db.DB):
         print("Add fancy facade stuff here...")
         return
 """
+
+
+
+def snake2CamelCase(name):
+    return re.sub(r'(?:^|_)([a-z])', lambda x: x.group(1).upper(), name)
+
+def snake2minus(name):
+    return re.sub('_', '-', name)
+
 
 
 def to_python_type(dtype:str) -> str:
