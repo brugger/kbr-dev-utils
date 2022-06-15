@@ -18,6 +18,49 @@ version = version_utils.as_string('kbr')
 db = None
 
 
+acl_schema_template = """
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS user_profile (
+   id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
+   idp_user_id UUID NOT NULL,
+   email varchar(200),
+   username varchar( 200 ),
+   superuser boolean NOT NULL default False,
+   create_date timestamp default now(),
+   last_login timestamp
+);
+
+CREATE TABLE IF NOT EXISTS acl (
+    id UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
+    endpoint varchar(50) NOT NULL ,
+    can_create boolean default FALSE,
+    can_read   boolean default False,
+    can_update boolean default False,
+    can_delete boolean default False
+);
+
+CREATE TABLE IF NOT EXISTS groups (
+    id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
+    name varchar( 200 ) UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_groups (
+   id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
+   user_profile_id UUID NOT NULL references user_profile( id ),
+   groups_id UUID NOT NULL references groups( id )
+);
+
+CREATE TABLE IF NOT EXISTS acl_groups (
+    id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
+    groups_id UUID NOT NULL references groups( id ),
+    acl_id UUID NOT NULL references acl( id )
+);
+
+"""
+
+
+
 api_template = """##### {{tblname}} #####
 
     def {{tblname}}_create(self{{required_args|join(', ')}}, **values) -> dict:
@@ -487,7 +530,7 @@ def rest_for_table(tblname:str, tbl:list) -> str:
         fields.append(f"'{row['column_name']}'")
 
     template = Template(rest_template)
-    return template.render({'tblname': tblname, 'table_fields':fields, 'table_required_fields': fields_required, 'tblname_camelcase': snake2CamelCase(name)})
+    return template.render({'tblname': tblname, 'table_fields':fields, 'table_required_fields': fields_required, 'tblname_camelcase': snake2CamelCase(tblname)})
 
 
 
@@ -571,7 +614,7 @@ def read_config(config_file) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'b':'bootstrap', 'h':'help'}
+    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'as':'acl_schema', 'aa': 'acl_api', 'b':'bootstrap', 'h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
     parser.add_argument('-p', '--project-name', help="project name (if differs from database name!)")
     parser.add_argument('-f', '--force', default=False, help="overwrite files", action="store_true")
@@ -597,6 +640,8 @@ def main():
         print("cli [dbase-name] <blueprint> <tables or -A>")
         print("rest [dbase-name] <blueprint> <tables or -A>")
         print("facade [project-name]")
+        print("acl_schema")
+        print("acl_api [dbase-name]")
         print("bootstrap <--force> [dbname-name] <tables, otherwise all will be used>")
         print("")
         sys.exit()
@@ -608,6 +653,9 @@ def main():
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
         print(facade_blueprint( pname ))
+    elif command == 'acl_schema':
+            print(acl_schema_template)
+            sys.exit()
     elif command == 'bootstrap':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         db = postgres_utils.DB(config['admin_dbase']+dbname)
@@ -661,7 +709,7 @@ def main():
         sys.exit()
 
 
-    elif command in ['api', 'cli', 'rest']:
+    elif command in ['api', 'cli', 'rest', 'acl_api']:
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
 
         if args.project_name is None:
@@ -671,6 +719,11 @@ def main():
 
         if args.all_tables: 
             args.command +=  [ v['tablename'] for v in db.tables_list()]
+
+        if command == 'acl_api':
+            args.command = ['user_profile', 'acl', 'groups', 'user_groups', 'acl_groups']
+            print(api_blueprint(args.command))
+            sys.exit()
 
         if command == 'api' and 'blueprint' in args.command:
             args.command.pop(args.command.index('blueprint'))
