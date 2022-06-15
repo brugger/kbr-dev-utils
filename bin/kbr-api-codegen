@@ -2,20 +2,55 @@
 
 
 import argparse
+from distutils import file_util
 import sys
 import os
 import re
+
+from jinja2 import Template
 
 from kbr import config_utils
 
 import kbr.args_utils as args_utils
 import kbr.version_utils as version_utils
 import kbr.dbase.postgres_utils as postgres_utils
-from jinja2 import Template
+import kbr.os_utils as os_utils
+import kbr.file_utils as file_utils
 
 version = version_utils.as_string('kbr')
 
 db = None
+
+acl_facade_template = """
+
+    def user_acls(self, user_profile_id:str) -> list:
+
+        roles = self.user_roles( user_profile_id=user_profile_id )
+        acls = {}
+        for role in roles:
+            acl_roles = self.acl_roles( role_id=role['role_id'])
+
+            for acl_role in acl_roles:
+                acl_id = acl_role[ 'acl_id' ]
+                acl = self.acl(id=acl_id)
+                endpoint = acl[ 'endpoint' ]
+
+                if endpoint not in acls:
+                    acls[ endpoint ] = {'can_create': acl['can_create'],
+                                        'can_read':acl['can_read'],
+                                        'can_update':acl['can_update'],
+                                        'can_delete':acl['can_delete'],
+                                        }
+                else:
+                    acls[endpoint]['can_create'] = acls[endpoint]['can_create'] or acl['can_create']
+                    acls[endpoint]['can_read']   = acls[endpoint]['can_read'] or acl['can_read']
+                    acls[endpoint]['can_update'] = acls[endpoint]['can_update'] or acl['can_update']
+                    acls[endpoint]['can_delete'] = acls[endpoint]['can_delete'] or acl['can_delete']
+
+
+        return acls
+
+"""
 
 
 acl_schema_template = """
@@ -40,20 +75,20 @@ CREATE TABLE IF NOT EXISTS acl (
     can_delete boolean default False
 );
 
-CREATE TABLE IF NOT EXISTS groups (
+CREATE TABLE IF NOT EXISTS role (
     id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
     name varchar( 200 ) UNIQUE NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS user_groups (
+CREATE TABLE IF NOT EXISTS user_role (
    id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
    user_profile_id UUID NOT NULL references user_profile( id ),
-   groups_id UUID NOT NULL references groups( id )
+   role_id UUID NOT NULL references role( id )
 );
 
-CREATE TABLE IF NOT EXISTS acl_groups (
+CREATE TABLE IF NOT EXISTS acl_role (
     id  UUID NOT NULL DEFAULT  uuid_generate_v4 () PRIMARY KEY,
-    groups_id UUID NOT NULL references groups( id ),
+    role_id UUID NOT NULL references role( id ),
     acl_id UUID NOT NULL references acl( id )
 );
 
@@ -129,7 +164,7 @@ def {{tblname}}_cmd(args) -> None:
 
     elif command == 'update':
         id = args_utils.get_or_fail(args, "Missing {{tblname}} id")
-        data = args_utils.group_args( args )
+        data = args_utils.named_args( args )
         data['id'] = id
         del data['rest']
 
@@ -612,9 +647,25 @@ def read_config(config_file) -> dict:
         sys.exit()
 
 
+def find_share_dir() -> str:
+
+    path = "/".join([sys.prefix, "share", "kbr-tools"])
+    if os.path.exists(path):
+        return path
+
+    script = f"{__file__}"
+    path = "/".join([os_utils.file_dir(script), "..","share"])
+    if os.path.exists(path):
+        return path
+
+
+    raise RuntimeError('path to share/kbr-tools not found!')
+
+
 def main():
+
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'as':'acl_schema', 'aa': 'acl_api', 'b':'bootstrap', 'h':'help'}
+    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'as':'acl_schema', 'aa': 'acl_api', 'af': 'acl_facade', 'ac':'acl_cli', 'b':'bootstrap', 'h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
     parser.add_argument('-p', '--project-name', help="project name (if differs from database name!)")
     parser.add_argument('-f', '--force', default=False, help="overwrite files", action="store_true")
@@ -642,6 +693,8 @@ def main():
         print("facade [project-name]")
         print("acl_schema")
         print("acl_api [dbase-name]")
+        print("acl_facade")
+        print("acl_cli")
         print("bootstrap <--force> [dbname-name] <tables, otherwise all will be used>")
         print("")
         sys.exit()
@@ -655,6 +708,14 @@ def main():
         print(facade_blueprint( pname ))
     elif command == 'acl_schema':
             print(acl_schema_template)
+            sys.exit()
+    elif command == 'acl_facade':
+            print(acl_facade_template)
+            sys.exit()
+    elif command == 'acl_cli':
+            share_path = find_share_dir()
+            template = file_utils.read(f"{share_path}/templates/kbr-auth-cli")
+            print(template.format(project=args.project_name))
             sys.exit()
     elif command == 'bootstrap':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
@@ -721,8 +782,13 @@ def main():
             args.command +=  [ v['tablename'] for v in db.tables_list()]
 
         if command == 'acl_api':
-            args.command = ['user_profile', 'acl', 'groups', 'user_groups', 'acl_groups']
-            print(api_blueprint(args.command))
+            args.command = ['user_profile', 'acl', 'role', 'user_role', 'acl_role']
+            if 'blueprint' in args.command:
+                print(api_blueprint(args.command))
+            else:
+                for tblname in args.command:
+                    tbl = db.table_details(tblname)
+                    print(api_for_table(tblname, tbl))
             sys.exit()
 
         if command == 'api' and 'blueprint' in args.command:

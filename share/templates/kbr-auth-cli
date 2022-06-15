@@ -17,7 +17,7 @@ import kbr.json_utils as json_utils
 import {project}.facade as {project}_db
 
 def config_cmd(args, config_file:str='api.json', force:bool=False) -> None:
-    commands = {'c':'create', 'p':'print', 'h':'help'}
+    commands = {{'c':'create', 'p':'print', 'h':'help'}}
     if len(args) == 0:
         args.append('help')
 
@@ -76,7 +76,7 @@ def utils_cmd(args) -> None:
     elif command == 'export':
         print('Not implemented yet...')
     else:
-        print("utils: {}".format(args_utils.pretty_commands(commands)))
+        print("utils: {{}}".format(args_utils.pretty_commands(commands)))
         sys.exit()
 
 
@@ -113,7 +113,7 @@ def table_cmd(args) -> None:
 
 def user_profile_cmd(args) -> None:
 
-    commands = {'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'a':'user-acls', 'h':'help'}
+    commands = {{'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'a':'user-acls', 'h':'help'}}
 
     if len(args) == 0:
         args.append('help')
@@ -172,7 +172,7 @@ def user_profile_cmd(args) -> None:
 
         print(f"acls for '{{user['username']}}'/'{{user['email']}}' id:{{id}}")
 
-        print( tabulate(data, headers={}, tablefmt='psql'))
+        print( tabulate(data, headers={{}}, tablefmt='psql'))
 
 
     else:
@@ -266,7 +266,7 @@ def role_cmd(args) -> None:
     elif command == 'show':
         id = args_utils.get_or_fail(args, "Missing role id")
         entry = db.role(id)
-        print( tabulate(entry, headers={}}}, tablefmt='psql'))
+        print( tabulate(entry, headers={{}}, tablefmt='psql'))
 
     elif command == 'list':
         roles = db.roles()
