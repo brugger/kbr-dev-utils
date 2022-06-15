@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import sys
+import csv
+import json
+
+sys.path.append(".")
+
+from tabulate import tabulate
+
+from kbr import config_utils
+import kbr.crypt_utils as crypt_utils
+import kbr.args_utils as args_utils
+import kbr.json_utils as json_utils
+
+import {project}.facade as {project}_db
+
+def config_cmd(args, config_file:str='api.json', force:bool=False) -> None:
+    commands = {'c':'create', 'p':'print', 'h':'help'}
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        
+        dbname   = args_utils.get_or_fail(args, "database name missing")
+        username = args_utils.get_or_default(args, dbname)
+        password = args_utils.get_or_default(args, crypt_utils.create_password())
+        host     = args_utils.get_or_default(args, "localhost")
+
+        config = {{"name": f"{{dbname}}-api",
+                  "database": f"postgresql://{{username}}:{{password}}@{{host}}/{{dbname}}",
+                  "logfile": "api.log",
+                  "server": {{
+                      "port": 8080,
+                      "template_path": "templates",
+                      "debug": False
+                   }}
+                  }}
+
+        if not os.path.isfile(config_file) or force:
+           json_utils.write(config_file, config)
+        else:
+            print(f"Cannot overwrite {{config_file}}")
+            sys.exit(-1)
+
+
+    elif command == 'print':
+        config = dict(config_utils.readin_config_file(config_file))
+        print( json.dumps(config, indent=2))
+    else:
+        print("Help:")
+        print("==========================")
+        print("config print")
+        print("config create  <dbname> [dbuser] [dbpasswd]")
+        print("utils help")
+
+        sys.exit(1)
+
+
+
+def utils_cmd(args) -> None:
+    commands = {{'i':'import', 'e':'export', 'h':'help'}}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'import':
+        print('Not implemented yet...')
+    elif command == 'export':
+        print('Not implemented yet...')
+    else:
+        print("utils: {}".format(args_utils.pretty_commands(commands)))
+        sys.exit()
+
+
+def table_cmd(args) -> None:
+    commands = {{ 'u':'user_profile','a':'acl','g':'role','ug':'user_role','ag':'acl_role', 'h':'help'}}
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+    
+    
+    if command == 'user_profile':
+        user_profile_cmd(args.command)
+        
+    elif command == 'acl':
+        acl_cmd(args.command)
+        
+    elif command == 'role':
+        role_cmd(args.command)
+        
+    elif command == 'user_role':
+        user_role_cmd(args.command)
+        
+    elif command == 'acl_role':
+        acl_role_cmd(args.command)
+        
+    else:
+        print("table: {{}}".format(args_utils.pretty_commands(commands)))
+        sys.exit()
+
+
+
+def user_profile_cmd(args) -> None:
+
+    commands = {'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'a':'user-acls', 'h':'help'}
+
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        data = {{}}
+
+        data['idp_user_id'] = args_utils.get_or_fail(args, "Missing idp_user_id")
+        data['superuser'] = args_utils.get_or_fail(args, "Missing superuser")
+
+        data['email'] = args_utils.get_or_default(args, None)
+        data['username'] = args_utils.get_or_default(args, None)
+        data['create_date'] = args_utils.get_or_default(args, None)
+        data['last_login'] = args_utils.get_or_default(args, None)
+
+        db.user_profile_create(**data)
+#        db.user_profile_create(idp_user_id=idp_user_id, email=email, username=username, superuser=superuser, create_date=create_date, last_login=last_login)
+
+    elif command == 'show':
+        id = args_utils.get_or_fail(args, "Missing user_profile id")
+        entry = db.user_profile(id)
+        print( tabulate(entry, headers={{}}, tablefmt='psql'))
+
+    elif command == 'list':
+        user_profiles = db.user_profiles()
+        print( tabulate(user_profiles, headers={{}}, tablefmt='psql'))
+
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing user_profile id")
+        data = args_utils.named_args( args )
+        print(data)
+        data['id'] = id
+        del data['rest']
+
+        db.user_profile_update(**data)
+
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing user_profile id")
+        db.user_profile_delete(id)
+    elif command == 'purge':
+        db.user_profile_purge()
+
+    elif command == 'user-acls':
+        id = args_utils.get_or_fail(args, "Missing user_profile id")
+        user_acls = db.user_acls(id)
+        data = []
+        for user_acl in user_acls:
+            path = {{'path':user_acl}}
+            path.update( user_acls[user_acl])
+            data.append(path)
+
+        user = db.user_profile(id)
+
+        print(f"acls for '{{user['username']}}'/'{{user['email']}}' id:{{id}}")
+
+        print( tabulate(data, headers={}, tablefmt='psql'))
+
+
+    else:
+        print("Help:")
+        print("-----------------")
+        print("user_profile list")
+        print("user_profile create [idp_user_id] [superuser] <email> <username> <create_date> <last_login> ")
+        print("user_profile show [id]")
+        print("user_profile update [id] idp_user_id:idp_user_id superuser:superuser email:email username:username create_date:create_date last_login:last_login  ")
+        print("user_profile delete [id]")
+        print("user_profile purge")
+        sys.exit()
+
+
+def acl_cmd(args) -> None:
+
+    commands = {{'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}}
+
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        data = {{}}
+
+        data['endpoint'] = args_utils.get_or_fail(args, "Missing endpoint")
+
+        data['can_create'] = args_utils.get_or_default(args, None)
+        data['can_read'] = args_utils.get_or_default(args, None)
+        data['can_update'] = args_utils.get_or_default(args, None)
+        data['can_delete'] = args_utils.get_or_default(args, None)
+
+        db.acl_create(**data)
+#        db.acl_create(endpoint=endpoint, can_create=can_create, can_read=can_read, can_update=can_update, can_delete=can_delete)
+
+    elif command == 'show':
+        id = args_utils.get_or_fail(args, "Missing acl id")
+        entry = db.acl(id)
+        print( tabulate(entry, headers={{}}, tablefmt='psql'))
+
+    elif command == 'list':
+        acls = db.acls()
+        print( tabulate(acls, headers={{}}, tablefmt='psql'))
+
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing acl id")
+        data = args_utils.group_args( args )
+        data['id'] = id
+        del data['rest']
+
+        db.acl_update(**data)
+
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing acl id")
+        db.acl_delete(id)
+    elif command == 'purge':
+        db.acl_purge()
+
+    else:
+        print("Help:")
+        print("-----------------")
+        print("acl list")
+        print("acl create [endpoint] <can_create> <can_read> <can_update> <can_delete> ")
+        print("acl show [id]")
+        print("acl update [id] endpoint:endpoint can_create:can_create can_read:can_read can_update:can_update can_delete:can_delete  ")
+        print("acl delete [id]")
+        print("acl purge")
+        sys.exit()
+
+
+def role_cmd(args) -> None:
+
+    commands = {{'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}}
+
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        data = {{}}
+
+        data['name'] = args_utils.get_or_fail(args, "Missing name")
+
+        db.role_create(**data)
+#        db.role_create(name=name)
+
+    elif command == 'show':
+        id = args_utils.get_or_fail(args, "Missing role id")
+        entry = db.role(id)
+        print( tabulate(entry, headers={}}}, tablefmt='psql'))
+
+    elif command == 'list':
+        roles = db.roles()
+        print( tabulate(roles, headers={{}}, tablefmt='psql'))
+
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing role id")
+        data = args_utils.group_args( args )
+        data['id'] = id
+        del data['rest']
+
+        db.role_update(**data)
+
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing role id")
+        db.role_delete(id)
+    elif command == 'purge':
+        db.role_purge()
+
+    else:
+        print("Help:")
+        print("-----------------")
+        print("role list")
+        print("role create [name] ")
+        print("role show [id]")
+        print("role update [id] name:name  ")
+        print("role delete [id]")
+        print("role purge")
+        sys.exit()
+
+
+def user_role_cmd(args) -> None:
+
+    commands = {{'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}}
+
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        data = {{}}
+
+        data['user_profile_id'] = args_utils.get_or_fail(args, "Missing user_profile_id")
+        data['role_id'] = args_utils.get_or_fail(args, "Missing role_id")
+
+
+        db.user_role_create(**data)
+#        db.user_role_create(user_profile_id=user_profile_id, role_id=role_id)
+
+    elif command == 'show':
+        id = args_utils.get_or_fail(args, "Missing user_role id")
+        entry = db.user_role(id)
+        print( tabulate(entry, headers={{}}, tablefmt='psql'))
+
+    elif command == 'list':
+        user_roles = db.user_roles()
+        print( tabulate(user_roles, headers={{}}, tablefmt='psql'))
+
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing user_role id")
+        data = args_utils.group_args( args )
+        data['id'] = id
+        del data['rest']
+
+        db.user_role_update(**data)
+
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing user_role id")
+        db.user_role_delete(id)
+    elif command == 'purge':
+        db.user_role_purge()
+
+    else:
+        print("Help:")
+        print("-----------------")
+        print("user_role list")
+        print("user_role create [user_profile_id] [role_id] ")
+        print("user_role show [id]")
+        print("user_role update [id] user_profile_id:user_profile_id role_id:role_id  ")
+        print("user_role delete [id]")
+        print("user_role purge")
+        sys.exit()
+
+
+def acl_role_cmd(args) -> None:
+
+    commands = {{'c':'create', 's':'show', 'l':'list', 'u':'update', 'd': 'delete', 'p':'purge', 'h':'help'}}
+
+    if len(args) == 0:
+        args.append('help')
+
+    command = args.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'create':
+        data = {{}}
+
+        data['acl_id'] = args_utils.get_or_fail(args, "Missing acl_id")
+        data['role_id'] = args_utils.get_or_fail(args, "Missing role_id")
+
+
+        db.acl_role_create(**data)
+#        db.acl_role_create(role_id=role_id, acl_id=acl_id)
+
+    elif command == 'show':
+        id = args_utils.get_or_fail(args, "Missing acl_role id")
+        entry = db.acl_role(id)
+        print( tabulate(entry, headers={{}}, tablefmt='psql'))
+
+    elif command == 'list':
+        acl_roles = db.acl_roles()
+        print( tabulate(acl_roles, headers={{}}, tablefmt='psql'))
+
+    elif command == 'update':
+        id = args_utils.get_or_fail(args, "Missing acl_role id")
+        data = args_utils.group_args( args )
+        data['id'] = id
+        del data['rest']
+
+        db.acl_role_update(**data)
+
+    elif command == 'delete':
+        id = args_utils.get_or_fail(args, "Missing acl_role id")
+        db.acl_role_delete(id)
+    elif command == 'purge':
+        db.acl_role_purge()
+
+    else:
+        print("Help:")
+        print("-----------------")
+        print("acl_role list")
+        print("acl_role create [role_id] [acl_id] ")
+        print("acl_role show [id]")
+        print("acl_role update [id] role_id:role_id acl_id:acl_id  ")
+        print("acl_role delete [id]")
+        print("acl_role purge")
+        sys.exit()
+
+
+
+
+
+def main():
+
+    commands = {{'u':'utils', 't':'table', 'c':'config', 'h':'help'}}
+
+    parser = argparse.ArgumentParser(description='{project}-cli tool')
+    parser.add_argument('-c', '--config', default="api.json", help="config file, can be overridden by parameters")
+    parser.add_argument('-f', '--force', default=False, action="store_true", help="overwrite files if exists")
+    parser.add_argument('-i', '--ids', default=False, action="store_true", help="Only output IDs on lists")
+    parser.add_argument('command', nargs='*', help="{{}}".format(",".join(commands.values())))
+
+    args = parser.parse_args()
+
+    args_utils.min_count(1, len(args.command),
+                         msg="{project}-cli takes one of the following commands: {{}}".format(args_utils.pretty_commands(commands)))
+
+
+    if len(args.command) == 0:
+        args.command.append('help')
+
+    command = args.command.pop(0)
+    command = args_utils.valid_command(command, commands)
+
+    if command == 'config':
+        config_cmd(args.command, args.config, args.force)
+        sys.exit()
+
+    args.config = config_utils.readin_config_file( args.config )
+
+    global db
+    db = {project}_db.DB()
+    db.connect( args.config.database )
+
+    if command == 'utils':
+        utils_cmd(args)
+    elif command == 'table':
+        table_cmd(args)
+    elif command == 'help':
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+
