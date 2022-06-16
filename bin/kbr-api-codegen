@@ -658,7 +658,6 @@ def find_share_dir() -> str:
     if os.path.exists(path):
         return path
 
-
     raise RuntimeError('path to share/kbr-tools not found!')
 
 

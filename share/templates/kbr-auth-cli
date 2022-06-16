@@ -81,7 +81,7 @@ def utils_cmd(args) -> None:
 
 
 def table_cmd(args) -> None:
-    commands = {{ 'u':'user_profile','a':'acl','g':'role','ug':'user_role','ag':'acl_role', 'h':'help'}}
+    commands = {{ 'u':'user_profile','a':'acl','r':'role','ug':'user_role','ag':'acl_role', 'h':'help'}}
 
     if len(args.command) == 0:
         args.command.append('help')
