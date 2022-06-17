@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+
+''' REST API for {{project}}'''
+
+import argparse
+
+import kbr.log_utils as logger
+import kbr.config_utils as config_utils
+import kbr.version_utils as version_utils
+
+#import kbr_api.auth     as oauth
+import kbr.tornado   as tornado
+
+import {{project}}.facade as {{project}}_db
+
+
+db = None
+version = version_utils.as_string()
+
+def introspection(token:str) -> dict:
+    url = f"{{introspection_url}}/{{token}}/"
+    response = requests.post(url, json={"client_id": client_id, "client_secret": client_secret})
+    return response.json()
+
+def acls(user_id) -> dict:
+    # Dont think this is needed.
+    user_id = uuid.UUID(hex=user_id)
+    user = db.user_profiles(idp_user_id=user_id)[0]
+    acls = db.user_acls(user['id'])
+
+    return acls
+
+tornado.introspection_func = introspection
+tornado.user_acls_func = acls
+
+
+
+class RootHandler ( tornado.BaseHandler ):
+
+    def endpoint(self):
+        return("/")
+
+    def get(self):
+        return self.send_response(data={"name":"{{project}}-api", "version":version})
+
+
+{{handlers}}
+
+def main():
+    parser = argparse.ArgumentParser(description='{{project}}-api: the rest service for {{project}}')
+
+
+    parser.add_argument('-c', '--config', default="api.json", help="config file, can be overridden by parameters")
+
+    parser.add_argument('-l', '--logfile', default=None, help="Logfile to write to, default is stdout")
+    parser.add_argument('-p', '--port', help="Port to bind to")
+    parser.add_argument('-v', '--verbose', default=4, action="count",  help="Increase the verbosity of logging output")
+
+    args = parser.parse_args()
+
+    config = config_utils.readin_config_file( args.config )
+
+    if args.port:
+        config.server.port = args.port
+
+    if args.logfile:
+        config.logfile = args.logfile
+        if args.logfile == 'stdout':
+            config.logfile = None
+
+    logger.init(name=config.name, log_file=config.logfile )
+    logger.set_log_level( args.verbose )
+
+    if 'database' in config:
+        global db
+        db = {{project}}_db.DB()
+        db.connect( config.database )
+
+    if 'auth' in config:
+        global introspection_url, client_id, client_secret
+        introspection_url = config['auth']['url']
+        client_id = config['auth']['client_id']
+        client_secret = config['auth']['client_secret']
+
+
+    urls = [('/', RootHandler),
+{% for table in tables %}    
+            (r'/{{table}}/(\w+)/?$',  {{table_camelcase}}DetailHandler),
+            (r'/{{table}}s/?$',         {{table_camelcase}}sListHandler),{%endfor%}
+
+            ]# + oauth.init( **config.oauth )
+
+    logger.info(f'Startup {{project}}-api (v:{version})')
+    logger.info(f"Running on port: {config['server'].get('port', 8080)}")
+
+
+    tornado.run_app( urls, **config.server )
+
+if __name__ == "__main__":
+    main()
