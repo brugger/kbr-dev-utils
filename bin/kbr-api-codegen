@@ -273,6 +273,24 @@ import {{project}}.facade as {{project}}_db
 db = None
 version = version_utils.as_string()
 
+def introspection(token:str) -> dict:
+    url = f"{{introspection_url}}/{{token}}/"
+    response = requests.post(url, json={"client_id": client_id, "client_secret": client_secret})
+    return response.json()
+
+def acls(user_id) -> dict:
+    # Dont think this is needed.
+    user_id = uuid.UUID(hex=user_id)
+    user = db.user_profiles(idp_user_id=user_id)[0]
+    acls = db.user_acls(user['id'])
+
+    return acls
+
+tornado.introspection_func = introspection
+tornado.user_acls_func = acls
+
+
+
 class RootHandler ( tornado.BaseHandler ):
 
     def endpoint(self):
@@ -313,6 +331,13 @@ def main():
         global db
         db = {{project}}_db.DB()
         db.connect( config.database )
+
+    if 'auth' in config:
+        global introspection_url, client_id, client_secret
+        introspection_url = config['auth']['url']
+        client_id = config['auth']['client_id']
+        client_secret = config['auth']['client_secret']
+
 
     urls = [('/', RootHandler),
 {% for table in tables %}    
@@ -376,6 +401,11 @@ def config_cmd(args, config_file:str='api.json', force:bool=False) -> None:
                       "port": 8080,
                       "template_path": "templates",
                       "debug": False
+                   },
+                   "auth":{
+                       "url": "https://<HOST>/introspect",
+                       "client_id": "<ID>",
+                       "client_secret": "<SECRET>"
                    }
                   }
 

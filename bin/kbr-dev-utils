@@ -13,6 +13,7 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 import argparse
 import tabulate
+import urllib.parse
 
 sys.path.append(".")
 #sys.path.append("..")
@@ -26,6 +27,7 @@ import kbr.datetime_utils as datetime_utils
 import kbr.os_utils as os_utils
 import kbr.git_utils as git_utils
 import kbr.config_utils as config_utils
+import kbr.crypt_utils as crypt_utils
 import kbr.dbase.postgres_utils as postgres_utils
 
 version = version_utils.as_string('kbr')
@@ -185,7 +187,7 @@ def init_cmds(args) -> None:
         
 
 def utils_cmds(args) -> None:
-    commands = {'u':'uuid', 'us':'uuids', 'p':'passwd', 'ps': 'passwds', 'h':'help'}
+    commands = {'u':'uuid', 'us':'uuids', 'p':'passwd', 'ps': 'passwds', 'ue': 'url-encode', 'ud': 'url-decode', 'h':'help'}
     if len(args.command) == 0:
         args.command.append('help')
 
@@ -228,6 +230,12 @@ def utils_cmds(args) -> None:
 
         for _ in range(0, number):
             print(crypt_utils.create_password(length, use_special_chars))
+    elif command == 'url-encode':
+        url = args_utils.get_or_fail(args.command, 'url not provided')
+        print(urllib.parse.quote(url))
+    elif command == 'url-decode':
+        url = args_utils.get_or_fail(args.command, 'url not provided')
+        print(urllib.parse.unquote(url))
     else:
         print("utils sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
@@ -246,11 +254,12 @@ def read_json_config() -> dict:
         print("Howto create:\nsudo -u postgres psql")
         print("CREATE USER <ADMIN> WITH SUPERUSER PASSWORD '<PASSWORD>';")
         print('{"admin_dbase": "postgresql://<ADMIN>:<PASSWORD>@localhost/"}')
+        print('or run command with pg create-config')
         sys.exit()
 
 
 def postgres_cmds(args) -> None:
-    commands = {'d':'database', 'u':'user', 't':'table', 'h':'help'}
+    commands = {'d':'database', 'u':'user', 't':'table', 'cc':'config-create', 'c':'config-check', 'h':'help'}
 
     if len(args.command) == 0:
         args.command.append('help')
@@ -264,6 +273,18 @@ def postgres_cmds(args) -> None:
         postgres_database_cmds(args)
     elif command == 'table':
         postgres_table_cmds(args)
+    elif command == 'config-create':
+        passwd = crypt_utils.create_password()
+        fh = open(os.getenv("HOME") + "/.kbr_dev_utils.json", 'w')
+        fh.write(f'{{"admin_dbase": "postgresql://admin:{passwd}@localhost/"}}')
+        fh.close()
+        print("create user:\nsudo -u postgres psql")
+        print(f"CREATE USER admin WITH SUPERUSER PASSWORD '{passwd}';")
+        sys.exit()
+    elif command == 'config-check':
+        url = args_utils.get_or_fail(args.command, 'connection url missing, eg postgresql://user:pass@host/dbase')
+        db = postgres_utils.DB(url)
+        print(db.uri_split(  ))
     else:
         print("postgres : {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
