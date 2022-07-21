@@ -266,7 +266,7 @@ def postgres_cmds(args) -> None:
         postgres_table_cmds(args)
     elif command == 'bootstrap':
             api_config_file = args_utils.get_or_fail(args.command, "Missing config filename")
-            if config_file in ['h', 'help']:
+            if api_config_file in ['h', 'help']:
                 print("kbr-dev-utils postgres bootstrap [api-config-file] <schema files>")
 
             config = read_json_config()
