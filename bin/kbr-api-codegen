@@ -6,6 +6,7 @@ from distutils import file_util
 import sys
 import os
 import re
+import json
 
 from jinja2 import Template
 
@@ -16,6 +17,7 @@ import kbr.version_utils as version_utils
 import kbr.dbase.postgres_utils as postgres_utils
 import kbr.os_utils as os_utils
 import kbr.file_utils as file_utils
+import kbr.crypt_utils as crypt_utils
 
 version = version_utils.as_string('kbr')
 
@@ -664,7 +666,7 @@ def find_share_dir() -> str:
 def main():
 
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
-    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'as':'acl_schema', 'aa': 'acl_api', 'af': 'acl_facade', 'ac':'acl_cli', 'b':'bootstrap', 'h':'help'}
+    commands = {'a': 'api', 'f': 'facade', 'c': 'cli', 'r':'rest', 'as':'acl_schema', 'aa': 'acl_api', 'af': 'acl_facade', 'ac':'acl_cli', 'b':'bootstrap', 'co': 'config','h':'help'}
     parser.add_argument('-c', '--config-file', default=[os.getenv("HOME") + "/.kbr_dev_utils.json"], help="output facade of api-file", nargs=1)
     parser.add_argument('-p', '--project-name', help="project name (if differs from database name!)")
     parser.add_argument('-f', '--force', default=False, help="overwrite files", action="store_true")
@@ -694,6 +696,7 @@ def main():
         print("acl_api [dbase-name]")
         print("acl_facade")
         print("acl_cli")
+        print("config [dbase-name] <username, default dbase-name> <password, default autogen> <host, default localhost>")
         print("bootstrap <--force> [dbname-name] <tables, otherwise all will be used>")
         print("")
         sys.exit()
@@ -705,6 +708,31 @@ def main():
     if command == 'facade':
         pname = args_utils.get_or_fail(args.command, "project name is missing")
         print(facade_blueprint( pname ))
+
+    elif command == 'config':
+        dbname   = args_utils.get_or_fail(args.command, "database name missing")
+
+        if dbname == 'help':
+            print("config [dbase-name] <username, default dbase-name> <password, default autogen> <host, default localhost>")
+            sys.exit(1)
+
+
+        username = args_utils.get_or_default(args.command, dbname)
+        password = args_utils.get_or_default(args.command, crypt_utils.create_password())
+        host     = args_utils.get_or_default(args.command, "localhost")
+
+        config = {"name": f"{dbname}-api",
+                  "database": f"postgresql://{username}:{password}@{host}/{dbname}",
+                  "logfile": "api.log",
+                  "server": {
+                      "port": 8080,
+                      "template_path": "templates",
+                      "debug": False
+                   }
+                  }
+
+        json.dump(config, sys.stdout, indent=4)
+
     elif command == 'acl_schema':
             print(acl_schema_template)
             sys.exit()

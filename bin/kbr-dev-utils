@@ -250,7 +250,7 @@ def read_json_config() -> dict:
 
 
 def postgres_cmds(args) -> None:
-    commands = {'d':'database', 'u':'user', 't':'table', 'h':'help'}
+    commands = {'d':'database', 'u':'user', 't':'table', 'b':'bootstrap', 'h':'help'}
 
     if len(args.command) == 0:
         args.command.append('help')
@@ -264,6 +264,38 @@ def postgres_cmds(args) -> None:
         postgres_database_cmds(args)
     elif command == 'table':
         postgres_table_cmds(args)
+    elif command == 'bootstrap':
+            api_config_file = args_utils.get_or_fail(args.command, "Missing config filename")
+            if config_file in ['h', 'help']:
+                print("kbr-dev-utils postgres bootstrap [api-config-file] <schema files>")
+
+            config = read_json_config()
+            db = postgres_utils.DB(config['admin_dbase']+"postgres")
+
+            api_config = config_utils.readin_config_file(api_config_file)
+            api_config = db.uri_split(api_config['database'])
+
+            dbname = api_config['db']
+            username = api_config['user']
+            password = api_config['pass']
+
+            if db.user_get(username) is not None:
+                print(f"user {username} already exists")
+            else:
+                db.user_create(username, password)
+
+            if db.database_exists(dbname):
+                print(f"database {dbname} already exists")
+            else:
+                db.database_create(dbname, username)
+
+            db.database_change_owner(dbname, username)
+            
+            for schema in args.command:
+                db = postgres_utils.DB(api_config['database'])
+                print(f'creating tables from {schema}')
+                db.tables_create(schema)
+
     else:
         print("postgres : {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
