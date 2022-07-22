@@ -318,8 +318,8 @@ def main():
 
     urls = [('/', RootHandler),
 {% for table in tables %}    
-            (r'/{{table}}/(\w+)/?$',  {{table_camelcase}}DetailHandler),
-            (r'/{{table}}s/?$',         {{table_camelcase}}sListHandler),{%endfor%}
+            (r'/{{table}}/(\w+)/?$',  {{table}}DetailHandler),
+            (r'/{{table}}s/?$',         {{table}}sListHandler),{%endfor%}
 
             ]# + oauth.init( **config.oauth )
 
@@ -508,12 +508,21 @@ def rest_blueprint(project:str, tables:list) -> str:
 
     template = Template(rest_file_template)
 
+    camel_back_tables = []
+
     handlers = ""
     for tblname in tables:
         tbl = db.table_details(tblname)
         handlers += rest_for_table(tblname, tbl)
+        camel_back_tables.append( snake2CamelCase(tblname))
 
-    return template.render({'project':project, 'tables': tables, 'handlers':handlers})
+
+    
+
+#    print( tables )
+#    sys.exit()
+
+    return template.render({'project':project, 'tables': camel_back_tables, 'handlers':handlers})
 
 def print_rest_blueprint(project:str, tables:list) -> None:
     print( rest_blueprint(project, tables))
