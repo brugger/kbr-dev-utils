@@ -273,11 +273,12 @@ def postgres_cmds(args) -> None:
             db = postgres_utils.DB(config['admin_dbase']+"postgres")
 
             api_config = config_utils.readin_config_file(api_config_file)
-            api_config = db.uri_split(api_config['database'])
+            print(api_config)
+            api_db_url = db.uri_split(api_config['database'])
 
-            dbname = api_config['db']
-            username = api_config['user']
-            password = api_config['pass']
+            dbname = api_db_url['db']
+            username = api_db_url['user']
+            password = api_db_url['pass']
 
             if db.user_get(username) is not None:
                 print(f"user {username} already exists")
