@@ -326,6 +326,9 @@ def main():
     logger.info(f'Startup {{project}}-api (v:{version})')
     logger.info(f"Running on port: {config['server'].get('port', 8080)}")
 
+    print('Running in dev mode, CORS allowed, disable in production!')
+    tornado.development()
+
 
     tornado.run_app( urls, **config.server )
 
@@ -702,9 +705,10 @@ def main():
         print("rest [dbase-name] <blueprint> <tables or -A>")
         print("facade [project-name]")
         print("acl_schema")
-        print("acl_api [dbase-name]")
+        print("acl_api")
         print("acl_facade")
-        print("acl_cli")
+        print("acl_rest")
+        print("acl_cli [project]")
         print("config [dbase-name] <username, default dbase-name> <password, default autogen> <host, default localhost>")
         print("bootstrap <--force> [dbname-name] <tables, otherwise all will be used>")
         print("")
@@ -753,6 +757,9 @@ def main():
             template = file_utils.read(f"{share_path}/templates/kbr-auth-cli")
             print(template.format(project=args.project_name))
             sys.exit()
+    elif command == 'acl_rest':
+            print(acl_rest_template)
+            sys.exit()
     elif command == 'bootstrap':
         dbname = args_utils.get_or_fail(args.command, "Missing database name")
         db = postgres_utils.DB(config['admin_dbase']+dbname)
@@ -795,6 +802,7 @@ def main():
             fh.write("records@git+https://github.com/brugger/records.git\n")
             fh.write("kbr-tornado@git+https://github.com/brugger/kbr-tools-tornado.git\n")
             fh.write("kbr-dbase@git+https://github.com/brugger/kbr-tools-dbase.git\n")
+            fh.write("requests\n")
             fh.close()
 
         if not os.path.isfile("version.json") or args.force:
@@ -802,6 +810,9 @@ def main():
             fh.write('{"major": 0, "minor": 0, "patch": 0}')
             fh.close()
 
+
+        print("Next steps:")
+        print('venv-init or on old systems: venv; pip install -r requirements.txt')
 
         sys.exit()
 

@@ -290,6 +290,11 @@ def postgres_cmds(args) -> None:
             else:
                 db.database_create(dbname, username)
 
+            # A hack as has to be done as superuser, and everything I do use this regardless.
+            print('adding uuid-ossp extension')
+            db = postgres_utils.DB(config['admin_dbase']+dbname)
+            db.do('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
+
             db.database_change_owner(dbname, username)
             
             for schema in args.command:
