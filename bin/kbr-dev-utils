@@ -13,6 +13,7 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 import argparse
 import tabulate
+import urllib
 
 sys.path.append(".")
 #sys.path.append("..")
@@ -185,7 +186,7 @@ def init_cmds(args) -> None:
         
 
 def utils_cmds(args) -> None:
-    commands = {'u':'uuid', 'us':'uuids', 'p':'passwd', 'ps': 'passwds', 'h':'help'}
+    commands = {'u':'uuid', 'us':'uuids', 'p':'passwd', 'ps': 'passwds', 'ue':'url-encode', 'ud':'url-decode', 'h':'help'}
     if len(args.command) == 0:
         args.command.append('help')
 
@@ -228,6 +229,12 @@ def utils_cmds(args) -> None:
 
         for _ in range(0, number):
             print(crypt_utils.create_password(length, use_special_chars))
+    elif command == 'url-encode':
+        url = args_utils.get_or_fail(args.command, 'Missing url to encode')
+        print(urllib.parse.quote(url))
+    elif command == 'url-decode':
+        url = args_utils.get_or_fail(args.command, 'Missing url to decode')
+        print(urllib.parse.unquote(url))
     else:
         print("utils sub-commands: {}".format(args_utils.pretty_commands(commands)))
         sys.exit()
