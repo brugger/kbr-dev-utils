@@ -395,14 +395,15 @@ def postgres_database_cmds(args) -> None:
 
 
 def postgres_table_cmds(args) -> None:
-    commands = {'c':'create', 'd':'delete', 'l':'list', 's':'schema', 'o':'set-owner', 'h':'help'}
+    commands = {'c':'create', 'd':'delete', 'da':'delete-all','l':'list', 's':'schema', 'o':'set-owner', 'h':'help'}
 
     if len(args.command) == 0 or 'help' in args:
         print("postgres table: {}".format(args_utils.pretty_commands(commands)))
         print("Help")
         print("------")
         print("table create [database] [schema-file] <owner>")
-        print("table delete [database] (all tables!)")
+        print("table delete [database] [table name]")
+        print("table delete-all [database] (all tables!)")
         print("table set-owner [database] [old-owner] [new-owner]")
         print("table schema [database] [table-name]")
         sys.exit()
@@ -428,6 +429,10 @@ def postgres_table_cmds(args) -> None:
         print(tabulate.tabulate(tables, headers={}))
 
     elif command == 'delete':
+        table_name = args_utils.get_or_fail(args.command, "Missing name of table to delete")
+        db.table_delete(table_name)
+
+    elif command == 'delete-all':
         db.tables_delete()
 
     elif command == 'set-owner':
