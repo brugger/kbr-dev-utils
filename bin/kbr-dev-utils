@@ -257,7 +257,7 @@ def read_json_config() -> dict:
 
 
 def postgres_cmds(args) -> None:
-    commands = {'d':'database', 'u':'user', 't':'table', 'b':'bootstrap', 'h':'help'}
+    commands = {'d':'database', 'u':'user', 't':'table', 'b':'bootstrap', 'ft':'flush-tables', 'h':'help'}
 
     if len(args.command) == 0:
         args.command.append('help')
@@ -308,6 +308,11 @@ def postgres_cmds(args) -> None:
                 db = postgres_utils.DB(api_config['database'])
                 print(f'creating tables from {schema}')
                 db.tables_create(schema)
+
+    elif command == 'flush-tables':
+        tables = db.tables_list()
+        for table in tables:
+            db.do(f"Truncate {table} CASCADE;")
 
     else:
         print("postgres : {}".format(args_utils.pretty_commands(commands)))

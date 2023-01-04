@@ -2,7 +2,6 @@
 
 
 import argparse
-from distutils import file_util
 import sys
 import os
 import re
@@ -98,7 +97,8 @@ CREATE TABLE IF NOT EXISTS acl_role (
 
 
 
-api_template = """##### {{tblname}} #####
+api_template = """
+##### {{tblname}} #####
 
     def {{tblname}}_create(self{{required_args|join(', ')}}, **values) -> dict:
 {% for param in required_params %}
