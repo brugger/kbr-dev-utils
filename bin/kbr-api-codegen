@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS acl_role (
 
 
 api_template = """
+
 ##### {{tblname}} #####
 
     def {{tblname}}_create(self{{required_args|join(', ')}}, **values) -> dict:
@@ -266,8 +267,9 @@ import kbr.log_utils as logger
 import kbr.config_utils as config_utils
 import kbr.version_utils as version_utils
 
-#import kbr_api.auth     as oauth
 import kbr.tornado   as tornado
+import kbr.tornado.auth_rest as auth_rest
+
 
 import {{project}}.facade as {{project}}_db
 
@@ -300,6 +302,10 @@ def main():
 
     config = config_utils.readin_config_file( args.config )
 
+    development=False
+    if config.get('environment', 'prod') == 'development':
+        development = True
+
     if args.port:
         config.server.port = args.port
 
@@ -318,10 +324,13 @@ def main():
 
     urls = [('/', RootHandler),
 {% for table in tables %}    
-            (r'/{{table}}/(\w+)/?$',  {{table}}DetailHandler),
-            (r'/{{table}}s/?$',         {{table}}sListHandler),{%endfor%}
+            (r'/{{table.minus}}/(\w+)/?$',    {{table.camelCase}}DetailHandler),
+            (r'/{{table.minus}}s/?$',         {{table.camelCase}}sListHandler),{%endfor%}
 
-            ]# + oauth.init( **config.oauth )
+            ] + auth_rest.init( config.database, config.introspection_url,
+                                config.client_id, config.client_secret, create_users=True, activate_users=False, 
+                                development=development )
+
 
     logger.info(f'Startup {{project}}-api (v:{version})')
     logger.info(f"Running on port: {config['server'].get('port', 8080)}")
@@ -358,51 +367,6 @@ import kbr.json_utils as json_utils
 import kbr.type_utils as type_utils
 
 import {{project}}.facade as {{project}}_db
-
-def config_cmd(args, config_file:str='api.json', force:bool=False) -> None:
-    commands = {'c':'create', 'p':'print', 'h':'help'}
-    if len(args) == 0:
-        args.append('help')
-
-    command = args.pop(0)
-    command = args_utils.valid_command(command, commands)
-
-    if command == 'create':
-        
-        dbname   = args_utils.get_or_fail(args, "database name missing")
-        username = args_utils.get_or_default(args, dbname)
-        password = args_utils.get_or_default(args, crypt_utils.create_password())
-        host     = args_utils.get_or_default(args, "localhost")
-
-        config = {"name": f"{dbname}-api",
-                  "database": f"postgresql://{username}:{password}@{host}/{dbname}",
-                  "logfile": "api.log",
-                  "server": {
-                      "port": 8080,
-                      "template_path": "templates",
-                      "debug": False
-                   }
-                  }
-
-        if not os.path.isfile(config_file) or force:
-           json_utils.write(config_file, config)
-        else:
-            print(f"Cannot overwrite {config_file}")
-            sys.exit(-1)
-
-
-    elif command == 'print':
-        config = dict(config_utils.readin_config_file(config_file))
-        print( json.dumps(config, indent=2))
-    else:
-        print("Help:")
-        print("==========================")
-        print("config print")
-        print("config create  <dbname> [dbuser] [dbpasswd]")
-        print("utils help")
-
-        sys.exit(1)
-
 
 
 def utils_cmd(args) -> None:
@@ -447,7 +411,7 @@ def table_cmd(args) -> None:
 
 def main():
 
-    commands = {'u':'utils', 't':'table', 'c':'config', 'h':'help'}
+    commands = {'u':'utils', 't':'table', 'h':'help'}
 
     parser = argparse.ArgumentParser(description='{project}-cli tool')
     parser.add_argument('-c', '--config', default="api.json", help="config file, can be overridden by parameters")
@@ -466,10 +430,6 @@ def main():
 
     command = args.command.pop(0)
     command = args_utils.valid_command(command, commands)
-
-    if command == 'config':
-        config_cmd(args.command, args.config, args.force)
-        sys.exit()
 
     args.config = config_utils.readin_config_file( args.config )
 
@@ -513,11 +473,14 @@ def rest_blueprint(project:str, tables:list) -> str:
 
     camel_back_tables = []
 
+    table_names = []
+
     handlers = ""
     for tblname in tables:
         tbl = db.table_details(tblname)
         handlers += rest_for_table(tblname, tbl)
         camel_back_tables.append( snake2CamelCase(tblname))
+        table_names.append({'camelCase': snake2CamelCase(tblname), 'minus':snake2minus(tblname) })
 
 
     
@@ -525,7 +488,7 @@ def rest_blueprint(project:str, tables:list) -> str:
 #    print( tables )
 #    sys.exit()
 
-    return template.render({'project':project, 'tables': camel_back_tables, 'handlers':handlers})
+    return template.render({'project':project, 'tables': table_names, 'handlers':handlers})
 
 def print_rest_blueprint(project:str, tables:list) -> None:
     print( rest_blueprint(project, tables))
@@ -675,6 +638,22 @@ def find_share_dir() -> str:
     raise RuntimeError('path to share/kbr-tools not found!')
 
 
+def tables(db)-> list:
+
+    table_list = []
+
+    for table in db.tables_list():
+        table_name = table['tablename'] 
+        if table_name in ["user_profile","acl","role","user_role","acl_role"]:
+            continue
+
+        table_list.append( table_name)
+
+
+    return table_list
+
+
+
 def main():
 
     parser = argparse.ArgumentParser(description="kbr dev utils (version: {version})".format(version=version))
@@ -734,14 +713,21 @@ def main():
         password = args_utils.get_or_default(args.command, crypt_utils.create_password())
         host     = args_utils.get_or_default(args.command, "localhost")
 
+
         config = {"name": f"{dbname}-api",
                   "database": f"postgresql://{username}:{password}@{host}/{dbname}",
                   "logfile": "api.log",
+                  "environment":"development",
                   "server": {
                       "port": 8080,
                       "template_path": "templates",
                       "debug": False
-                   }
+                   },
+
+                  "client_id": f"{dbname}",
+                  "client_secret": f"{crypt_utils.create_password()}",
+                  "introspection_url": "http://localhost:8088/introspect"
+
                   }
 
         json.dump(config, sys.stdout, indent=4)
@@ -769,7 +755,7 @@ def main():
             project_name = args.project_name
 
         if args.command == []:
-            args.command +=  [ v['tablename'] for v in db.tables_list()]
+            args.command += tables(db)
 
         os.makedirs(project_name, exist_ok = True, mode=0o755,  )
         os.makedirs("bin", exist_ok = True, mode=0o755)
@@ -826,7 +812,7 @@ def main():
         db = postgres_utils.DB(config['admin_dbase']+dbname)
 
         if args.all_tables: 
-            args.command +=  [ v['tablename'] for v in db.tables_list()]
+            args.command +=  tables(db)
 
         if command == 'acl_api':
             args.command = ['user_profile', 'acl', 'role', 'user_role', 'acl_role']
